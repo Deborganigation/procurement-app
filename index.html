@@ -16,18 +16,32 @@
 
     <style>
         :root {
-            --primary-color: #0d6efd; --secondary-color: #6c757d; --success-color: #198754;
-            --info-color: #0dcaf0; --warning-color: #ffc107; --danger-color: #dc3545;
-            --sidebar-bg: #2c3e50; --sidebar-text: #ecf0f1; --sidebar-hover: #34495e;
-            --content-bg: #f8f9fa;
+            --primary-color: #0d6efd; 
+            --secondary-color: #6c757d; 
+            --success-color: #198754;
+            --info-color: #0dcaf0; 
+            --warning-color: #ffc107; 
+            --danger-color: #dc3545;
+            --sidebar-bg: #2c3e50; 
+            --sidebar-text: #ecf0f1; 
+            --sidebar-hover: #34495e;
+            --content-bg: #f4f7f6;
+            --card-bg: #ffffff;
+            --text-dark: #343a40;
+            --text-muted: #6c757d;
         }
-        body { font-family: 'Poppins', sans-serif; background-color: var(--content-bg); }
+        
+        body { 
+            font-family: 'Poppins', sans-serif; 
+            background-color: var(--content-bg);
+        }
+        
         .hidden { display: none !important; }
         .view { animation: fadeIn 0.5s; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
-        #loader-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 255, 255, 0.8); z-index: 10000; display: flex; align-items: center; justify-content: center; }
-        #toast-container { position: fixed; top: 20px; right: 20px; z-index: 10001; }
+        #loader-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 255, 255, 0.8); z-index: 10002; display: flex; align-items: center; justify-content: center; }
+        #toast-container { position: fixed; top: 20px; right: 20px; z-index: 10003; }
         .toast-notification { padding: 15px 20px; color: white; border-radius: 8px; margin-bottom: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); animation: slideIn 0.3s ease; }
         .toast-notification.success { background-color: var(--success-color); }
         .toast-notification.error { background-color: var(--danger-color); }
@@ -40,54 +54,64 @@
         
         .password-container { position: relative; }
         .password-container .toggle-password { position: absolute; top: 50%; right: 15px; transform: translateY(-50%); cursor: pointer; color: #6c757d; }
+        
+        .wrapper {
+            display: flex;
+        }
 
-        .main-container { display: flex; min-height: 100vh; }
-        .sidebar { width: 280px; background: var(--sidebar-bg); color: var(--sidebar-text); padding: 20px; display: flex; flex-direction: column; transition: width 0.3s ease; }
-        .sidebar .logo { font-size: 1.6rem; font-weight: 700; text-align: center; color: white; padding-bottom: 20px; border-bottom: 1px solid var(--sidebar-hover); margin-bottom: 20px; }
+        .sidebar { 
+            width: 280px; 
+            background: var(--sidebar-bg); 
+            color: var(--sidebar-text); 
+            display: flex; 
+            flex-direction: column; 
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100%;
+            z-index: 1001;
+            transition: transform 0.3s ease-in-out;
+        }
+        .sidebar .logo { font-size: 1.6rem; font-weight: 700; text-align: center; color: white; padding: 20px 10px; border-bottom: 1px solid var(--sidebar-hover); margin-bottom: 20px; }
         .sidebar .nav-link { color: var(--sidebar-text); padding: 12px 15px; border-radius: 8px; margin-bottom: 5px; transition: all 0.3s ease; white-space: nowrap; cursor: pointer; display: flex; align-items: center;}
         .sidebar .nav-link:hover { background-color: var(--sidebar-hover); color: white; }
-        .sidebar .nav-link.active { background-color: var(--primary-color); color: white; }
+        .sidebar .nav-link.active { background-color: var(--primary-color); color: white; font-weight: 500; }
         .sidebar .nav-link i { margin-right: 15px; width: 20px; text-align: center; }
         .sidebar .user-profile { margin-top: auto; border-top: 1px solid var(--sidebar-hover); padding-top: 15px; text-align: center; }
-        .main-content { flex-grow: 1; padding: 25px; overflow-x: hidden; }
-        .top-header { display: flex; justify-content: space-between; align-items: center; background: white; padding: 15px 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); margin-bottom: 25px; }
+        
+        .main-content { 
+            width: 100%;
+            padding: 25px; 
+            margin-left: 280px;
+            transition: margin-left 0.3s ease-in-out;
+        }
+        
+        .top-header { display: flex; justify-content: space-between; align-items: center; background: var(--card-bg); padding: 15px 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); margin-bottom: 25px; }
+        .mobile-menu-btn { display: none; }
+
         .stat-card { border: none; border-radius: 12px; color: white; padding: 25px; box-shadow: 0 5px 25px rgba(0,0,0,0.1); transition: transform 0.2s ease; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
         .stat-card:hover { transform: translateY(-5px); }
         .stat-card .display-4 { font-weight: 700; }
         .stat-card i.stat-icon { font-size: 3.5rem; opacity: 0.2; }
-        .kpi-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); display: flex; align-items: center; }
+        
+        .kpi-card { background: var(--card-bg); border-radius: 12px; padding: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); display: flex; align-items: center; }
         .kpi-card .kpi-icon { font-size: 2.5rem; padding: 15px; border-radius: 50%; margin-right: 15px; color: #fff; }
-        .kpi-card .kpi-info h6 { color: #6c757d; margin-bottom: 0px; text-transform: uppercase; font-size: 0.8rem;}
+        .kpi-card .kpi-info h6 { color: var(--text-muted); margin-bottom: 0px; text-transform: uppercase; font-size: 0.8rem;}
         .kpi-card .kpi-info p { font-size: 1.8rem; font-weight: 700; margin-bottom: 0; line-height: 1.2;}
 
-        #messaging-view .card { height: calc(100vh - 125px); }
-        #chat-list .list-group-item { cursor: pointer; }
-        #chat-list .list-group-item.active { background-color: var(--primary-color); color: white; border-color: var(--primary-color); }
-        #chat-messages { display: flex; flex-direction: column; }
-        .message-bubble { max-width: 75%; width: fit-content; padding: 10px 15px; border-radius: 18px; margin-bottom: 10px; word-wrap: break-word; }
-        .message-bubble.sent { background-color: var(--primary-color); color: white; align-self: flex-end; }
-        .message-bubble.received { background-color: #e9ecef; color: #212529; align-self: flex-start; }
-        .message-bubble small { font-size: 0.75rem; opacity: 0.8; display: block; margin-top: 5px; }
+        .card { border: none; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); }
+        .card-header { background-color: var(--card-bg); border-bottom: 1px solid #dee2e6; font-weight: 600; }
         
-        .req-group-header {
-            background-color: #e9ecef;
-            font-weight: bold;
+        /* Responsive Styles */
+        @media (max-width: 992px) {
+            .sidebar { transform: translateX(-100%); }
+            .sidebar.active { transform: translateX(0); }
+            .main-content { margin-left: 0; }
+            .mobile-menu-btn { display: inline-block; }
+            .top-header { flex-wrap: wrap; }
+            #header-title { width: 100%; text-align: center; margin-top: 10px; }
         }
 
-        .select2-container--bootstrap-5 .select2-selection {
-            min-height: calc(1.5em + 0.75rem + 2px);
-            padding: 0.375rem 0.75rem;
-            font-size: 1rem;
-        }
-        
-        .bidding-row {
-            background-color: #f0f8ff; /* AliceBlue */
-        }
-        .bidding-row td {
-            padding-top: 1rem !important;
-            padding-bottom: 1rem !important;
-            border-top: 2px dashed #0d6efd !important;
-        }
     </style>
 </head>
 <body>
@@ -97,7 +121,7 @@
 
     <div id="login-wrapper">
         <video autoplay muted loop id="login-video-bg"> <source src="https://laserpowerinfra.com/frontassets/img/slider/Banner_v04_HD_L.mp4" type="video/mp4"> </video>
-        <div id="login-container" class="card p-4 shadow-lg border-0">
+        <div id="login-container" class="card p-4 p-md-5 shadow-lg border-0">
             <h2 class="text-center mb-1"><i class="fas fa-tasks text-primary"></i> DEB'S PROCUREMENT</h2>
             <p class="text-center text-muted mb-4">Login to your account</p>
             <form id="login-form">
@@ -112,8 +136,8 @@
         </div>
     </div>
 
-    <div id="app-container" class="main-container hidden">
-        <nav class="sidebar">
+    <div id="app-container" class="wrapper hidden">
+        <nav class="sidebar" id="sidebar">
             <div class="logo"><i class="fas fa-tasks"></i> DEB'S PROCUREMENT </div>
             <div id="nav-links">
                 <a class="nav-link admin-nav-item" data-view="admin-dashboard-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-tachometer-alt"></i> Dashboard</a>
@@ -124,14 +148,16 @@
                 <a class="nav-link admin-nav-item" data-view="admin-reports-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-chart-pie"></i> Reports & Analytics</a>
                 <a class="nav-link admin-nav-item" data-view="admin-pending-users-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-user-check"></i> User Approvals</a>
                 <a class="nav-link admin-nav-item" data-view="admin-user-control-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-users-cog"></i> User Control</a>
-                <a class="nav-link admin-nav-item user-nav-item vendor-nav-item" data-view="messaging-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-comments"></i> Messages</a>
                 
-                <a class="nav-link vendor-nav-item" data-view="vendor-dashboard-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-clipboard-list"></i> My Open Contracts</a>
+                <a class="nav-link vendor-nav-item" data-view="vendor-dashboard-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-tachometer-alt"></i> Dashboard</a>
+                <a class="nav-link vendor-nav-item" data-view="vendor-requirements-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-clipboard-list"></i> My Open Requirements</a>
                 <a class="nav-link vendor-nav-item" data-view="vendor-my-bids-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-gavel"></i> My Bidding History</a>
                 <a class="nav-link vendor-nav-item" data-view="vendor-awarded-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-trophy"></i> My Awarded Contracts</a>
                 
                 <a class="nav-link user-nav-item" data-view="user-create-req-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-edit"></i> Create Requisition</a>
                 <a class="nav-link user-nav-item" data-view="user-status-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-history"></i> My Requisition Status</a>
+
+                <a class="nav-link admin-nav-item user-nav-item vendor-nav-item" data-view="messaging-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-comments"></i> Messages</a>
             </div>
             <div class="user-profile">
                 <h6 id="user-name-sidebar"></h6>
@@ -140,14 +166,10 @@
             </div>
         </nav>
 
-        <main class="main-content">
+        <main class="main-content" id="main-content">
             <div class="top-header">
                 <div class="d-flex align-items-center">
-                    <div id="nav-controls" class="me-3">
-                        <button class="btn btn-sm btn-outline-secondary" id="nav-back" title="Back"><i class="fas fa-arrow-left"></i></button>
-                        <button class="btn btn-sm btn-outline-secondary" id="nav-next" title="Next"><i class="fas fa-arrow-right"></i></button>
-                        <button class="btn btn-sm btn-outline-secondary" id="nav-home" title="Home"><i class="fas fa-home"></i></button>
-                    </div>
+                    <button class="btn btn-outline-secondary mobile-menu-btn me-3" id="sidebar-toggle"><i class="fas fa-bars"></i></button>
                     <h1 id="header-title" class="h4 mb-0"></h1>
                 </div>
                 <button class="btn btn-sm btn-outline-info" onclick="handleManualRefresh()"><i class="fas fa-sync-alt me-2"></i>Refresh Data</button>
@@ -188,13 +210,6 @@
         let vendorSpendChart, itemStatusChart;
         let chatPollingInterval = null;
         let itemCounter = 0;
-
-        const navHistory = {
-            stack: [], forwardStack: [],
-            push(viewId) { if (this.stack.length === 0 || this.stack[this.stack.length - 1] !== viewId) { this.stack.push(viewId); this.forwardStack = []; } },
-            back() { if (this.stack.length > 1) { this.forwardStack.push(this.stack.pop()); return this.stack[this.stack.length - 1]; } return null; },
-            forward() { if (this.forwardStack.length > 0) { const nextView = this.forwardStack.pop(); this.stack.push(nextView); return nextView; } return null; }
-        };
         
         const views = {
             'admin-dashboard-view': `
@@ -205,37 +220,35 @@
                     <div class="col-lg-3 col-md-6"><div class="stat-card bg-info" onclick="navigateTo('admin-awarded-view')"><div><h5 class="mb-0">Items Awarded</h5><p class="display-4" id="stats-awarded-contracts">--</p></div><i class="fas fa-trophy stat-icon"></i></div></div>
                 </div>
                 <div class="row g-4">
-                    <div class="col-md-7"><div class="card shadow-sm border-0"><div class="card-header bg-white d-flex justify-content-between align-items-center"><h5 class="mb-0">Pending Requisitions</h5><a href="#" class="small" onclick="navigateTo('admin-pending-reqs-view')">View All</a></div><div id="admin-dashboard-reqs" class="list-group list-group-flush" style="max-height: 350px; overflow-y: auto;"></div></div></div>
-                    <div class="col-md-5"><div class="card shadow-sm border-0"><div class="card-header bg-white d-flex justify-content-between align-items-center"><h5 class="mb-0">Recent Bids</h5><a href="#" class="small" onclick="navigateTo('admin-bidding-history-view')">View All</a></div><div id="admin-dashboard-bids" class="list-group list-group-flush" style="max-height: 350px; overflow-y: auto;"></div></div></div>
+                    <div class="col-lg-7"><div class="card h-100"><div class="card-header d-flex justify-content-between align-items-center"><h5 class="mb-0">Pending Requisitions</h5><a href="#" class="small" onclick="navigateTo('admin-pending-reqs-view')">View All</a></div><div id="admin-dashboard-reqs" class="list-group list-group-flush" style="max-height: 350px; overflow-y: auto;"></div></div></div>
+                    <div class="col-lg-5"><div class="card h-100"><div class="card-header d-flex justify-content-between align-items-center"><h5 class="mb-0">Recent Bids</h5><a href="#" class="small" onclick="navigateTo('admin-bidding-history-view')">View All</a></div><div id="admin-dashboard-bids" class="list-group list-group-flush" style="max-height: 350px; overflow-y: auto;"></div></div></div>
                 </div>`,
-            'admin-pending-reqs-view': `<div class="card shadow-sm border-0"><div class="card-header bg-white"><h5 class="mb-0">Pending Requisition Approvals</h5></div><div class="card-body"><div class="accordion" id="pending-reqs-accordion"></div></div></div>`,
-            'admin-requirements-view': `<div class="card shadow-sm border-0">
-                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            'admin-pending-reqs-view': `<div class="card"><div class="card-header"><h5 class="mb-0">Pending Requisition Approvals</h5></div><div class="card-body"><div class="accordion" id="pending-reqs-accordion"></div></div></div>`,
+            'admin-requirements-view': `<div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <h5 class="mb-0">All Active Requirement Items</h5>
                     <div>
-                        <button class="btn btn-success" onclick="handleAdvancedBulkAward()"><i class="fas fa-trophy me-2"></i>Award Selected</button>
-                        <button class="btn btn-primary" onclick="openBulkUploadModal()"><i class="fas fa-upload me-2"></i>Bulk Upload</button>
+                        <button class="btn btn-success btn-sm" onclick="handleAdvancedBulkAward()"><i class="fas fa-trophy me-2"></i>Award Selected</button>
+                        <button class="btn btn-primary btn-sm" onclick="openBulkUploadModal()"><i class="fas fa-upload me-2"></i>Bulk Upload</button>
                     </div>
                 </div>
                 <div class="card-body table-responsive"><table class="table table-hover align-middle" id="admin-req-table"><thead class="table-light"><tr><th><input type="checkbox" onchange="toggleAllInParent(this, 'req-item-checkbox')"></th><th>Req ID</th><th>Item Name & Code</th><th>Assigned Vendors</th><th>Status</th><th>L1 Vendor</th><th>L1 Rate (₹)</th><th>Actions</th></tr></thead><tbody id="admin-req-tbody"></tbody></table></div></div>`,
-            'admin-bidding-history-view': `<div class="card shadow-sm border-0"><div class="card-header bg-white d-flex justify-content-between align-items-center"><h5 class="mb-0">Bidding History</h5><button class="btn btn-sm btn-success" onclick="downloadBiddingHistoryReport()"><i class="fas fa-download me-2"></i>Download Report</button></div><div class="card-body"><div class="table-responsive"><table class="table table-hover align-middle" id="admin-bids-table"><thead class="table-light"><tr><th>Req ID</th><th>Item</th><th>Vendor</th><th>Amount (₹)</th><th>Status</th><th>Date</th></tr></thead><tbody id="admin-bids-tbody"></tbody></table></div></div></div>`,
-            'admin-awarded-view': `<div class="card shadow-sm border-0">
-                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            'admin-bidding-history-view': `<div class="card"><div class="card-header d-flex justify-content-between align-items-center"><h5 class="mb-0">Bidding History</h5><button class="btn btn-sm btn-success" onclick="downloadBiddingHistoryReport()"><i class="fas fa-download me-2"></i>Download Report</button></div><div class="card-body table-responsive"><table class="table table-hover align-middle" id="admin-bids-table"><thead class="table-light"><tr><th>Req ID</th><th>Item</th><th>Vendor</th><th>Amount (₹)</th><th>Status</th><th>Date</th></tr></thead><tbody id="admin-bids-tbody"></tbody></table></div></div>`,
+            'admin-awarded-view': `<div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <h5 class="mb-0">Awarded Contracts</h5>
                     <div>
                         <button class="btn btn-danger btn-sm me-2" onclick="handleBulkReopenModal()"><i class="fas fa-history me-2"></i>Re-open Selected</button>
                         <button class="btn btn-sm btn-success" onclick="downloadAdminAwardedContractsReport()"><i class="fas fa-download me-2"></i>Download Report</button>
                     </div>
                 </div>
-                <div class="card-body">
-                    <div class="table-responsive"><table class="table table-hover align-middle" id="admin-awarded-table"><thead class="table-light"><tr><th><input type="checkbox" onchange="toggleAllInParent(this, 'awarded-item-checkbox')"></th><th>Req. ID</th><th>Item Name</th><th>Item Code</th><th>Qty & Unit</th><th>Vendor</th><th>Amount (₹)</th><th>Date</th><th>Actions</th></tr></thead><tbody id="admin-awarded-tbody"></tbody></table></div>
-                </div></div>`,
+                <div class="card-body table-responsive"><table class="table table-hover align-middle" id="admin-awarded-table"><thead class="table-light"><tr><th><input type="checkbox" onchange="toggleAllInParent(this, 'awarded-item-checkbox')"></th><th>Req. ID</th><th>Item Name</th><th>Item Code</th><th>Qty & Unit</th><th>Vendor</th><th>Amount (₹)</th><th>Date</th><th>Actions</th></tr></thead><tbody id="admin-awarded-tbody"></tbody></table></div></div>`,
             'admin-reports-view': `<h4 class="mb-4">Procurement Analytics Dashboard</h4>
-                <div class="row g-3 align-items-center p-3 bg-light border rounded mb-4">
+                <div class="card mb-4"><div class="card-body"><div class="row g-3 align-items-center">
                     <div class="col-md-5"><label class="form-label form-label-sm">Start Date</label><input type="date" id="report-start-date" class="form-control form-control-sm"></div>
                     <div class="col-md-5"><label class="form-label form-label-sm">End Date</label><input type="date" id="report-end-date" class="form-control form-control-sm"></div>
-                    <div class="col-md-2 d-grid"><button id="report-apply-filter" class="btn btn-primary btn-sm">Apply Filter</button></div>
-                </div>
+                    <div class="col-md-2 d-grid"><button id="report-apply-filter" class="btn btn-primary btn-sm mt-md-3">Apply Filter</button></div>
+                </div></div></div>
                 <div class="row g-4 mb-4">
                     <div class="col-lg-3 col-md-6"><div class="kpi-card"><div class="kpi-icon bg-primary"><i class="fas fa-wallet"></i></div><div class="kpi-info"><h6 class>Total Spend</h6><p id="report-total-spend">₹0</p></div></div></div>
                     <div class="col-lg-3 col-md-6"><div class="kpi-card"><div class="kpi-icon bg-success"><i class="fas fa-piggy-bank"></i></div><div class="kpi-info"><h6 class>Cost Savings (L2-L1)</h6><p id="report-cost-savings">₹0</p></div></div></div>
@@ -243,31 +256,34 @@
                     <div class="col-lg-3 col-md-6"><div class="kpi-card"><div class="kpi-icon bg-warning"><i class="fas fa-clock"></i></div><div class="kpi-info"><h6 class>Avg. Cycle Time</h6><p id="report-cycle-time">0 Days</p></div></div></div>
                 </div>
                 <div class="row g-4">
-                    <div class="col-lg-8"><div class="card h-100 shadow-sm"><div class="card-header">Spend by Vendor</div><div class="card-body"><canvas id="vendorSpendChart"></canvas></div></div></div>
-                    <div class="col-lg-4"><div class="card h-100 shadow-sm"><div class="card-header">Item Status Overview</div><div class="card-body d-flex align-items-center justify-content-center"><canvas id="itemStatusChart" style="max-height: 300px;"></canvas></div></div></div>
+                    <div class="col-lg-8"><div class="card h-100"><div class="card-header">Spend by Vendor</div><div class="card-body"><canvas id="vendorSpendChart"></canvas></div></div></div>
+                    <div class="col-lg-4"><div class="card h-100"><div class="card-header">Item Status Overview</div><div class="card-body d-flex align-items-center justify-content-center"><canvas id="itemStatusChart" style="max-height: 300px;"></canvas></div></div></div>
                 </div>`,
-            'admin-pending-users-view': `<div class="card shadow-sm border-0"><div class="card-header bg-white"><h5 class="mb-0">Pending User Approvals</h5></div><div class="card-body table-responsive"><table class="table align-middle" id="admin-pending-users-table"><thead class="table-light"><tr><th>Name</th><th>Email</th><th>Role</th><th>Company</th><th>Contact</th><th>Action</th></tr></thead><tbody id="admin-pending-users-tbody"></tbody></table></div></div>`,
-            'admin-user-control-view': `<div class="card shadow-sm border-0"><div class="card-header bg-white d-flex justify-content-between align-items-center"><h5 class="mb-0">User Control Center</h5><button class="btn btn-success btn-sm" onclick="openAddUserModal()"><i class="fas fa-plus me-2"></i>Add User</button></div><div class="card-body table-responsive"><table class="table align-middle" id="admin-users-table"><thead class="table-light"><tr><th>Name</th><th>Email</th><th>Role</th><th>Company</th><th>Contact</th><th>GSTIN</th><th>Action</th></tr></thead><tbody id="admin-users-tbody"></tbody></table></div></div>`,
-            'messaging-view': `<div class="card shadow-sm border-0"><div class="row g-0 h-100"><div class="col-lg-4 col-12 border-end d-flex flex-column"><div class="card-header bg-white d-flex justify-content-between align-items-center"><h5 class="mb-0">Conversations</h5><button class="btn btn-sm btn-outline-primary" onclick="load_messaging_view()"><i class="fas fa-sync-alt"></i></button></div><div class="p-2 border-bottom"><input type="text" id="chat-search" class="form-control" placeholder="Search users to chat..."></div><div id="chat-list" class="list-group list-group-flush" style="overflow-y: auto; flex-grow: 1;"></div></div><div class="col-lg-8 col-12 d-flex flex-column"><div id="chat-main" class="h-100"><div id="chat-welcome" class="d-flex align-items-center justify-content-center h-100"><div class="text-center text-muted"><i class="fas fa-comments fa-3x mb-3"></i><p>Select a conversation to start messaging.</p></div></div><div id="chat-window" class="d-none h-100 d-flex flex-column"><div class="card-header bg-white d-flex justify-content-between align-items-center border-bottom"><h5 id="chat-with-name" class="mb-0"></h5><button class="btn btn-sm btn-outline-success" id="download-chat-btn"><i class="fas fa-download me-1"></i> Download History</button></div><div id="chat-messages" class="card-body p-4" style="overflow-y: auto; flex-grow: 1;"></div><div class="card-footer bg-light p-3 border-top"><form id="message-form" class="d-flex"><input type="text" id="message-input" class="form-control" placeholder="Type a message..." autocomplete="off" required><button type="submit" class="btn btn-primary ms-2"><i class="fas fa-paper-plane"></i></button></form></div></div></div></div></div></div>`,
+            'admin-pending-users-view': `<div class="card"><div class="card-header"><h5 class="mb-0">Pending User Approvals</h5></div><div class="card-body table-responsive"><table class="table align-middle" id="admin-pending-users-table"><thead class="table-light"><tr><th>Name</th><th>Email</th><th>Role</th><th>Company</th><th>Contact</th><th>Action</th></tr></thead><tbody id="admin-pending-users-tbody"></tbody></table></div></div>`,
+            'admin-user-control-view': `<div class="card"><div class="card-header d-flex justify-content-between align-items-center"><h5 class="mb-0">User Control Center</h5><button class="btn btn-success btn-sm" onclick="openAddUserModal()"><i class="fas fa-plus me-2"></i>Add User</button></div><div class="card-body table-responsive"><table class="table align-middle" id="admin-users-table"><thead class="table-light"><tr><th>Name</th><th>Email</th><th>Role</th><th>Company</th><th>Contact</th><th>GSTIN</th><th>Action</th></tr></thead><tbody id="admin-users-tbody"></tbody></table></div></div>`,
+            
             'vendor-dashboard-view': `
-                <div class="row g-4 mb-4">
-                    <div class="col-md-4"><div class="stat-card bg-info" onclick="navigateTo('vendor-dashboard-view')"><div><h5 class="mb-0">Assigned Items</h5><p class="display-4" id="vendor-stats-assigned">--</p></div><i class="fas fa-file-signature stat-icon"></i></div></div>
+                <div class="row g-4">
+                    <div class="col-md-4"><div class="stat-card bg-info" onclick="navigateTo('vendor-requirements-view')"><div><h5 class="mb-0">Assigned Items</h5><p class="display-4" id="vendor-stats-assigned">--</p></div><i class="fas fa-file-signature stat-icon"></i></div></div>
                     <div class="col-md-4"><div class="stat-card bg-secondary" onclick="navigateTo('vendor-my-bids-view')"><div><h5 class="mb-0">Bids Submitted</h5><p class="display-4" id="vendor-stats-submitted">--</p></div><i class="fas fa-gavel stat-icon"></i></div></div>
                     <div class="col-md-4"><div class="stat-card bg-success" onclick="navigateTo('vendor-awarded-view')"><div><h5 class="mb-0">Contracts Won</h5><p class="display-4" id="vendor-stats-won">--</p></div><i class="fas fa-trophy stat-icon"></i></div></div>
-                </div>
-                <div class="card shadow-sm border-0">
-                    <div class="card-header bg-white d-flex justify-content-between align-items-center"><h5 class="mb-0">My Open Contracts for Bidding</h5></div>
+                </div>`,
+            'vendor-requirements-view': `<div class="card">
+                    <div class="card-header"><h5 class="mb-0">My Open Requirements for Bidding</h5></div>
                     <div class="card-body p-0"><div class="table-responsive"><table class="table table-hover align-middle mb-0" id="vendor-reqs-table">
                         <thead class="table-light"><tr><th>Item Details</th><th>Qty & Unit</th><th>My Bid Status</th><th>My Rank</th></tr></thead>
                         <tbody id="vendor-reqs-tbody"></tbody>
                     </table></div></div>
                 </div>`,
-            'vendor-my-bids-view': `<div class="card shadow-sm border-0"><div class="card-header bg-white d-flex justify-content-between align-items-center"><h5 class="mb-0">My Bidding History</h5><button class="btn btn-sm btn-success" onclick="downloadMyBidsReport()"><i class="fas fa-download me-2"></i>Download Report</button></div><div class="card-body table-responsive"><table class="table align-middle" id="vendor-bids-table"><thead class="table-light"><tr><th>Req. ID</th><th>Item Name</th><th>My Bid (₹)</th><th>My Rank</th><th>Status</th><th>Date</th></tr></thead><tbody id="vendor-bids-tbody"></tbody></table></div></div>`,
-            'vendor-awarded-view': `<div class="card shadow-sm border-0"><div class="card-header bg-white d-flex justify-content-between align-items-center"><h5 class="mb-0">My Awarded Contracts</h5><button class="btn btn-sm btn-success" onclick="downloadMyAwardedContractsReport()"><i class="fas fa-download me-2"></i>Download Report</button></div><div class="card-body table-responsive"><table class="table align-middle" id="vendor-awarded-table"><thead class="table-light"><tr><th>Req. ID</th><th>Item</th><th>Amount (₹)</th><th>Date</th></tr></thead><tbody id="vendor-awarded-tbody"></tbody></table></div></div>`,
-            'user-create-req-view': `<div class="card shadow-sm border-0"><div class="card-header bg-white"><h5 class="mb-0"><i class="fas fa-edit me-2"></i>Create a New Requisition</h5></div><div class="card-body"><form id="requisition-form"><div id="requisition-items-container"></div><button type="button" class="btn btn-outline-secondary w-100 mb-3" onclick="addRequisitionItem()"><i class="fas fa-plus me-2"></i>Add another item</button><div class="card p-3 mb-3"><h6 class="mt-2 d-flex justify-content-between align-items-center">Select Vendors to Notify<div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="select-all-vendors-user"><label class="form-check-label small" for="select-all-vendors-user">Select All</label></div></h6><div id="req-vendor-checklist" class="border rounded p-3" style="max-height: 150px; overflow-y: auto;"></div></div><button type="submit" class="btn btn-primary w-100 fw-bold">Submit Requisition for Approval</button></form></div></div>`,
-            'user-status-view': `<div class="card shadow-sm border-0"><div class="card-header bg-white"><h5 class="mb-0"><i class="fas fa-history me-2"></i>My Requisition Status</h5></div><div class="card-body" id="user-req-status-list"></div></div>`,
+            'vendor-my-bids-view': `<div class="card"><div class="card-header d-flex justify-content-between align-items-center"><h5 class="mb-0">My Bidding History</h5><button class="btn btn-sm btn-success" onclick="downloadMyBidsReport()"><i class="fas fa-download me-2"></i>Download Report</button></div><div class="card-body table-responsive"><table class="table align-middle" id="vendor-bids-table"><thead class="table-light"><tr><th>Req. ID</th><th>Item Name</th><th>My Bid (₹)</th><th>My Rank</th><th>Status</th><th>Date</th></tr></thead><tbody id="vendor-bids-tbody"></tbody></table></div></div>`,
+            'vendor-awarded-view': `<div class="card"><div class="card-header d-flex justify-content-between align-items-center"><h5 class="mb-0">My Awarded Contracts</h5><button class="btn btn-sm btn-success" onclick="downloadMyAwardedContractsReport()"><i class="fas fa-download me-2"></i>Download Report</button></div><div class="card-body table-responsive"><table class="table align-middle" id="vendor-awarded-table"><thead class="table-light"><tr><th>Req. ID</th><th>Item</th><th>Amount (₹)</th><th>Date</th></tr></thead><tbody id="vendor-awarded-tbody"></tbody></table></div></div>`,
+            
+            'user-create-req-view': `<div class="card"><div class="card-header"><h5 class="mb-0"><i class="fas fa-edit me-2"></i>Create a New Requisition</h5></div><div class="card-body"><form id="requisition-form"><div id="requisition-items-container"></div><button type="button" class="btn btn-outline-secondary w-100 mb-3" onclick="addRequisitionItem()"><i class="fas fa-plus me-2"></i>Add another item</button><div class="card p-3 mb-3"><h6 class="mt-2 d-flex justify-content-between align-items-center">Select Vendors to Notify<div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="select-all-vendors-user"><label class="form-check-label small" for="select-all-vendors-user">Select All</label></div></h6><div id="req-vendor-checklist" class="border rounded p-3" style="max-height: 150px; overflow-y: auto;"></div></div><button type="submit" class="btn btn-primary w-100 fw-bold">Submit Requisition for Approval</button></form></div></div>`,
+            'user-status-view': `<div class="card"><div class="card-header"><h5 class="mb-0"><i class="fas fa-history me-2"></i>My Requisition Status</h5></div><div class="card-body" id="user-req-status-list"></div></div>`,
+            
+            'messaging-view': `<div class="card" style="height: calc(100vh - 125px);"><div class="row g-0 h-100"><div class="col-lg-4 col-12 border-end d-flex flex-column"><div class="card-header d-flex justify-content-between align-items-center"><h5 class="mb-0">Conversations</h5><button class="btn btn-sm btn-outline-primary" onclick="load_messaging_view()"><i class="fas fa-sync-alt"></i></button></div><div class="p-2 border-bottom"><input type="text" id="chat-search" class="form-control" placeholder="Search users to chat..."></div><div id="chat-list" class="list-group list-group-flush" style="overflow-y: auto; flex-grow: 1;"></div></div><div class="col-lg-8 col-12 d-flex flex-column"><div id="chat-main" class="h-100"><div id="chat-welcome" class="d-flex align-items-center justify-content-center h-100"><div class="text-center text-muted"><i class="fas fa-comments fa-3x mb-3"></i><p>Select a conversation to start messaging.</p></div></div><div id="chat-window" class="d-none h-100 d-flex flex-column"><div class="card-header d-flex justify-content-between align-items-center border-bottom"><h5 id="chat-with-name" class="mb-0"></h5><button class="btn btn-sm btn-outline-success" id="download-chat-btn"><i class="fas fa-download me-1"></i> Download History</button></div><div id="chat-messages" class="card-body p-4" style="overflow-y: auto; flex-grow: 1;"></div><div class="card-footer bg-light p-3 border-top"><form id="message-form" class="d-flex"><input type="text" id="message-input" class="form-control" placeholder="Type a message..." autocomplete="off" required><button type="submit" class="btn btn-primary ms-2"><i class="fas fa-paper-plane"></i></button></form></div></div></div></div></div></div>`
         };
-
+        
         // =========================================================
         // ================ CORE APP LOGIC =========================
         // =========================================================
@@ -307,13 +323,11 @@
             $('#reg-role').on('change', handleRoleChange);
             $('#edit-user-form').on('submit', handleUserUpdateSubmit);
             $('#bulk-upload-form').on('submit', handleBulkUpload);
-            $('#nav-back').on('click', () => { const prev = navHistory.back(); if(prev) navigateTo(prev, true); });
-            $('#nav-next').on('click', () => { const next = navHistory.forward(); if(next) navigateTo(next, true); });
-            $('#nav-home').on('click', () => {
-                const user = JSON.parse(sessionStorage.getItem('loggedInUser'));
-                const homeView = user ? { 'Admin': 'admin-dashboard-view', 'Vendor': 'vendor-dashboard-view', 'User': 'user-create-req-view' }[user.role] : '';
-                if(homeView) navigateTo(homeView);
+            
+            $('#sidebar-toggle').on('click', () => {
+                $('#sidebar').toggleClass('active');
             });
+            
             $('#togglePassword').on('click', function() {
                 const passwordInput = $('#password');
                 const type = passwordInput.attr('type') === 'password' ? 'text' : 'password';
@@ -377,8 +391,9 @@
                 headerTitle.text(navLink.text().trim());
             }
 
-            if(!fromHistory) navHistory.push(viewId);
-            updateNavControls();
+            if (window.innerWidth < 992) {
+                $('#sidebar').removeClass('active');
+            }
 
             const loadFunctionName = `load_${viewId.replace(/-/g, '_')}`;
             if (typeof window[loadFunctionName] === 'function') {
@@ -386,22 +401,18 @@
             }
         }
         
-        function updateNavControls() {
-            $('#nav-back').prop('disabled', navHistory.stack.length <= 1);
-            $('#nav-next').prop('disabled', navHistory.forwardStack.length === 0);
-        }
-
         async function handleManualRefresh() {
-            const currentView = navHistory.stack[navHistory.stack.length - 1];
-            if (currentView) {
+            const currentViewLink = $('#nav-links .nav-link.active');
+            if (currentViewLink.length > 0) {
                 showToast('Refreshing data...', 'info');
+                const viewId = currentViewLink.data('view');
                 const user = JSON.parse(sessionStorage.getItem('loggedInUser'));
                 if (user && user.role === 'User') {
                     PRODUCT_LIST = []; 
                     LOCATION_DROPDOWN_DATA = [];
                     await Promise.all([fetchProductList(), fetchLocationDropdownData()]);
                 }
-                navigateTo(currentView, true);
+                navigateTo(viewId, true); 
             }
         }
 
@@ -438,8 +449,8 @@
             await fetchLocationDropdownData();
             if (user.role === 'User') await fetchProductList();
             
-            const defaultView = { 'Admin': 'admin-dashboard-view', 'Vendor': 'vendor-dashboard-view', 'User': 'user-create-req-view' }[user.role];
-            navigateTo(defaultView);
+            const defaultViewMap = { 'Admin': 'admin-dashboard-view', 'Vendor': 'vendor-dashboard-view', 'User': 'user-create-req-view' };
+            navigateTo(defaultViewMap[user.role]);
         }
         
         // =========================================================
@@ -568,24 +579,23 @@
         }
         
         async function load_vendor_dashboard_view() {
-            const [statsResult, reqsResult] = await Promise.all([
-                apiCall('/vendor/dashboard-stats'),
-                apiCall('/requirements/assigned')
-            ]);
-
-            if (statsResult.success) {
-                $('#vendor-stats-assigned').text(statsResult.data.assignedItems);
-                $('#vendor-stats-submitted').text(statsResult.data.submittedBids);
-                $('#vendor-stats-won').text(statsResult.data.contractsWon);
+            const result = await apiCall('/vendor/dashboard-stats');
+            if (result.success) {
+                $('#vendor-stats-assigned').text(result.data.assignedItems);
+                $('#vendor-stats-submitted').text(result.data.submittedBids);
+                $('#vendor-stats-won').text(result.data.contractsWon);
             }
-
-            if(reqsResult.success) {
+        }
+        
+        async function load_vendor_requirements_view() {
+            const result = await apiCall('/requirements/assigned');
+            if(result.success) {
                 const tbody = $('#vendor-reqs-tbody').html('');
-                if(reqsResult.data.length === 0) {
-                    tbody.html(`<tr><td colspan="4" class="text-center p-4">No open contracts assigned for bidding.</td></tr>`); return;
+                if(result.data.length === 0) {
+                    tbody.html(`<tr><td colspan="4" class="text-center p-4">No open requirements assigned for bidding.</td></tr>`); return;
                 }
                 
-                reqsResult.data.forEach(item => {
+                result.data.forEach(item => {
                     const isBidded = item.my_bid_status;
                     const itemRow = `
                         <tr data-item='${JSON.stringify(item)}'>
@@ -849,7 +859,7 @@
             const result = await apiCall('/bids', 'POST', { bids: [bid] });
             if(result.success) {
                 showToast('Bid submitted successfully!', 'success');
-                load_vendor_dashboard_view();
+                load_vendor_requirements_view();
             }
         }
 
@@ -997,7 +1007,13 @@
         function toggleAllInParent(source, targetClass) { $(source).closest('table, .modal-body, .accordion-body, .card-body, .mb-3').find(`input[type="checkbox"].${targetClass}`).not(':disabled').prop('checked', source.checked); }
         function formatCurrency(v){const n=parseFloat(v);return isNaN(n)?'-':`₹${n.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}`}
         function getBadgeColor(s){return {'Awarded':'primary','Active':'success','Pending Approval':'warning','Submitted':'info','Rejected':'danger','Processed': 'secondary', 'Bidding Closed': 'dark'}[s]||'dark'}
-        function createImageLinks(item) { return [item.drawing_url, item.specimen_url].filter(Boolean).map((url, i) => `<a href="${url}" target="_blank" onclick="event.stopPropagation()" title="${i === 0 ? 'Drawing' : 'Specimen'}"><i class="fas ${i === 0 ? 'fa-ruler-combined' : 'fa-image'}"></i></a>`).join(' ') || '-'; }
+        function createImageLinks(item) {
+            if (!item.drawing_url && !item.specimen_url) return '-';
+            const links = [];
+            if(item.drawing_url) links.push(`<a href="${item.drawing_url}" target="_blank" onclick="event.stopPropagation()" title="Drawing"><i class="fas fa-ruler-combined"></i></a>`);
+            if(item.specimen_url) links.push(`<a href="${item.specimen_url}" target="_blank" onclick="event.stopPropagation()" title="Specimen"><i class="fas fa-image"></i></a>`);
+            return links.join(' ');
+        }
 
         async function updateReportView() {
             const startDate = $('#report-start-date').val();
