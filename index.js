@@ -24,6 +24,7 @@ app.get('/', (req, res) => {
 });
 
 // ================== DATABASE POOL ==================
+// ===== FIX for ECONNRESET =====: Added connectTimeout for more resilience with free databases
 const dbPool = mysql.createPool({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
@@ -33,6 +34,7 @@ const dbPool = mysql.createPool({
     waitForConnections: true,
     connectionLimit: 20,
     queueLimit: 0,
+    connectTimeout: 20000, // 20 seconds timeout
     dateStrings: true
 });
 
@@ -175,9 +177,6 @@ app.get('/api/requisitions/my-status', authenticateToken, async (req, res, next)
 });
 
 // --- 3. VENDOR FEATURES ---
-// ... (Your other routes like /api/requirements/assigned, etc. will go here. The code for them is correct.)
-// ... (I am including the full code as you requested)
-
 app.get('/api/requirements/assigned', authenticateToken, async (req, res, next) => {
     try {
         const query = `
@@ -263,10 +262,15 @@ app.get('/api/vendor/my-bids', authenticateToken, async (req, res, next) => {
     }
 });
 
+// ===== UPDATE for Re-open Logic =====
 app.get('/api/vendor/my-awarded-contracts', authenticateToken, async (req, res, next) => {
     try {
         const [contracts] = await dbPool.query(
-            'SELECT ac.*, ri.item_name, ri.requisition_id, ri.item_sl_no FROM awarded_contracts ac JOIN requisition_items ri ON ac.item_id = ri.item_id WHERE ac.vendor_id = ? ORDER BY ac.awarded_date DESC', [req.user.userId]
+            `SELECT ac.*, ri.item_name, ri.requisition_id, ri.item_sl_no 
+             FROM awarded_contracts ac 
+             JOIN requisition_items ri ON ac.item_id = ri.item_id 
+             WHERE ac.vendor_id = ? AND ri.status = 'Awarded' 
+             ORDER BY ac.awarded_date DESC`, [req.user.userId]
         );
         res.json({ success: true, data: contracts });
     } catch (error) {
@@ -411,13 +415,25 @@ app.post('/api/contracts/award', authenticateToken, isAdmin, async (req, res, ne
     }
 });
 
+// ===== UPDATE for Re-open Logic & Awarded Report Breakup =====
 app.get('/api/admin/awarded-contracts', authenticateToken, isAdmin, async (req, res, next) => {
     try {
         const query = `
-            SELECT ac.*, ri.item_name, ri.item_code, ri.quantity, ri.unit, ri.item_sl_no, u.full_name as vendor_name
+            SELECT 
+                ac.*, 
+                ri.item_name, 
+                ri.item_code, 
+                ri.quantity, 
+                ri.unit, 
+                ri.item_sl_no, 
+                u.full_name as vendor_name,
+                b.ex_works_rate,
+                b.freight_rate
             FROM awarded_contracts ac
             JOIN requisition_items ri ON ac.item_id = ri.item_id
             JOIN users u ON ac.vendor_id = u.user_id
+            LEFT JOIN bids b ON ac.item_id = b.item_id AND ac.vendor_id = b.vendor_id AND b.bid_status = 'Awarded'
+            WHERE ri.status = 'Awarded'
             ORDER BY ac.awarded_date DESC`;
         const [contracts] = await dbPool.query(query);
         res.json({ success: true, data: contracts });
@@ -426,6 +442,7 @@ app.get('/api/admin/awarded-contracts', authenticateToken, isAdmin, async (req, 
     }
 });
 
+// ===== FIX for MySQL 5.7 Compatibility (Removed Window Functions) =====
 app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res, next) => {
     try {
         const { startDate, endDate } = req.body;
@@ -440,17 +457,16 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
         const kpiQuery = `
             SELECT
                 SUM(ac.awarded_amount) AS totalSpend,
-                (SELECT SUM(l2.bid_amount - ac_inner.awarded_amount)
-                    FROM awarded_contracts ac_inner
+                (
+                    SELECT SUM(l2_bids.bid_amount - l1_bids.awarded_amount)
+                    FROM awarded_contracts l1_bids
                     JOIN (
-                        SELECT item_id, bid_amount
-                        FROM (
-                            SELECT item_id, bid_amount, ROW_NUMBER() OVER(PARTITION BY item_id ORDER BY bid_amount ASC) as rn
-                            FROM bids
-                        ) ranked_bids
-                        WHERE rn = 2
-                    ) l2 ON ac_inner.item_id = l2.item_id
-                    ${startDate && endDate ? 'WHERE ac_inner.awarded_date BETWEEN ? AND ?' : ''}
+                        SELECT b1.item_id, MIN(b1.bid_amount) as bid_amount
+                        FROM bids b1
+                        WHERE b1.bid_amount > (SELECT MIN(b2.bid_amount) FROM bids b2 WHERE b2.item_id = b1.item_id)
+                        GROUP BY b1.item_id
+                    ) l2_bids ON l1_bids.item_id = l2_bids.item_id
+                    ${startDate && endDate ? 'WHERE l1_bids.awarded_date BETWEEN ? AND ?' : ''}
                 ) AS costSavings,
                 AVG(DATEDIFF(ac.awarded_date, ri.created_at)) as avgCycleTime,
                 (SELECT AVG(bid_counts.num_bids) FROM (SELECT COUNT(bid_id) as num_bids FROM bids GROUP BY item_id) bid_counts) as avgBids
@@ -458,7 +474,7 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
             JOIN requisition_items ri ON ac.item_id = ri.item_id
             ${dateFilter}`;
         
-        const kpiParams = (startDate && endDate) ? [startDate, endDate, ...params] : [...params];
+        const kpiParams = (startDate && endDate) ? [...params, startDate, endDate] : [...params];
 
         const vendorSpendQuery = `
             SELECT u.full_name, SUM(ac.awarded_amount) as total
@@ -503,25 +519,19 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
     }
 });
 
+
 app.post('/api/items/reopen-bidding', authenticateToken, isAdmin, async (req, res, next) => {
-    const { itemIds, vendorIds, remarks } = req.body;
+    const { itemIds } = req.body;
     const connection = await dbPool.getConnection();
     try {
         await connection.beginTransaction();
+        // Remove from awarded contracts first
+        await connection.query('DELETE FROM awarded_contracts WHERE item_id IN (?)', [itemIds]);
+        // Then update the item status
         await connection.query('UPDATE requisition_items SET status = "Active" WHERE item_id IN (?)', [itemIds]);
-        await connection.query('UPDATE awarded_contracts SET remarks = CONCAT(IFNULL(remarks, ""), ?) WHERE item_id IN (?)', [`\nRe-opened: ${remarks}`, itemIds]);
-        
-        const [items] = await connection.query('SELECT DISTINCT requisition_id FROM requisition_items WHERE item_id IN (?)', [itemIds]);
-        const requisitionIds = items.map(i => i.requisition_id);
+        // Also update bids status
+        await connection.query('UPDATE bids SET bid_status = "Submitted" WHERE item_id IN (?)', [itemIds]);
 
-        for (const reqId of requisitionIds) {
-            await connection.query('DELETE FROM requisition_assignments WHERE requisition_id = ?', [reqId]);
-            if (vendorIds && vendorIds.length > 0) {
-                for(const vendorId of vendorIds) {
-                    await connection.query('INSERT INTO requisition_assignments (requisition_id, vendor_id) VALUES (?, ?)', [reqId, vendorId]);
-                }
-            }
-        }
         await connection.commit();
         res.json({ success: true, message: 'Bidding re-opened successfully.' });
     } catch(error) {
@@ -531,6 +541,7 @@ app.post('/api/items/reopen-bidding', authenticateToken, isAdmin, async (req, re
         connection.release();
     }
 });
+
 
 app.post('/api/requisitions/bulk-upload', authenticateToken, isAdmin, excelUpload.single('bulkFile'), async (req, res, next) => {
     if (!req.file) return res.status(400).json({ success: false, message: 'No Excel file uploaded.' });
@@ -739,10 +750,8 @@ app.get('/api/users/chattable', authenticateToken, async (req, res, next) => {
         let params = [userId];
 
         if (role === 'Vendor') {
-            // Vendors can only chat with Admins and Users
             query = "SELECT user_id, full_name, role FROM users WHERE role IN ('Admin', 'User') AND is_active = 1";
         } else {
-            // Admins and Users can chat with anyone except themselves
             query = "SELECT user_id, full_name, role FROM users WHERE user_id != ? AND is_active = 1";
         }
         
