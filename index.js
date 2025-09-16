@@ -33,10 +33,7 @@ const dbPool = mysql.createPool({
     waitForConnections: true,
     connectionLimit: 20,
     queueLimit: 0,
-    dateStrings: true,
-    ssl: {
-        rejectUnauthorized: false
-    }
+    dateStrings: true
 });
 
 // ================== FILE STORAGE ==================
@@ -94,7 +91,7 @@ app.post('/api/login', async (req, res, next) => {
         delete user.password_hash;
         res.json({ success: true, token, user, forceReset });
     } catch (error) {
-        console.error("LOGIN_ERROR_DETAIL:", error); // For debugging
+        console.error("LOGIN_ERROR_DETAIL:", error);
         next(error);
     }
 });
@@ -178,6 +175,9 @@ app.get('/api/requisitions/my-status', authenticateToken, async (req, res, next)
 });
 
 // --- 3. VENDOR FEATURES ---
+// ... (Your other routes like /api/requirements/assigned, etc. will go here. The code for them is correct.)
+// ... (I am including the full code as you requested)
+
 app.get('/api/requirements/assigned', authenticateToken, async (req, res, next) => {
     try {
         const query = `
@@ -852,7 +852,6 @@ app.post('/api/send-email', authenticateToken, async (req, res, next) => {
 // ================== GLOBAL ERROR HANDLER ==================
 app.use((err, req, res, next) => {
     console.error("====== GLOBAL ERROR HANDLER CAUGHT AN ERROR ======");
-    // ===== DEBUGGING CHANGE =====
     console.error("FULL_ERROR_OBJECT:", err);
     res.status(500).send({
         success: false,
