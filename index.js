@@ -34,7 +34,7 @@ const dbPool = mysql.createPool({
     database: process.env.DB_DATABASE,
     port: process.env.DB_PORT,
     waitForConnections: true,
-    connectionLimit: 20,
+    connectionLimit: 10,
     queueLimit: 0,
     connectTimeout: 20000, // 20 seconds timeout
     dateStrings: true
@@ -548,8 +548,9 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
             JOIN users u ON ac.vendor_id = u.user_id
             WHERE ${dateFilter}
             GROUP BY u.full_name ORDER BY total DESC LIMIT 5`;
-
-        const categorySpendQuery = `SELECT item_code, SUM(awarded_amount) as total FROM awarded_contracts ac JOIN requisition_items ri ON ac.item_id = ri.item_id WHERE ${dateFilter} GROUP BY item_code ORDER BY total DESC LIMIT 5`;
+        
+        // FIX: Specify which table's item_code to use (ri.item_code) to resolve ambiguity.
+        const categorySpendQuery = `SELECT ri.item_code, SUM(ac.awarded_amount) as total FROM awarded_contracts ac JOIN requisition_items ri ON ac.item_id = ri.item_id WHERE ${dateFilter} GROUP BY ri.item_code ORDER BY total DESC LIMIT 5`;
         
         const savingsTrendQuery = `
             SELECT DATE_FORMAT(ac.awarded_date, '%Y-%m') as month, SUM(l2_bids.bid_amount - ac.awarded_amount) as savings
@@ -703,8 +704,8 @@ app.put('/api/requisitions/:id/assignments', authenticateToken, isAdmin, async (
         await connection.beginTransaction();
         await connection.query('DELETE FROM requisition_assignments WHERE requisition_id = ?', [id]);
         if (vendorIds && vendorIds.length > 0) {
-            const values = vendorIds.map(vId => [id, vId]);
-            await connection.query('INSERT INTO requisition_assignments (requisition_id, vendor_id, assigned_at) VALUES ?', [values.map(v => [...v, new Date()])]);
+            const values = vendorIds.map(vId => [id, vId, new Date()]);
+            await connection.query('INSERT INTO requisition_assignments (requisition_id, vendor_id, assigned_at) VALUES ?', [values]);
         }
         await connection.commit();
         res.json({ success: true, message: 'Vendor assignments updated successfully.' });
