@@ -18,21 +18,25 @@ app.use(express.json({ limit: '50mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
+// ===== FIX: Serve index.html for the root URL ('Cannot GET /' error) =====
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 // ================== DATABASE POOL ==================
-// ===== CRITICAL NOTE =====:
-// The error "Duplicate entry '0' for key 'PRIMARY'" means your database table's
-// primary key (e.g., `requisitions.requisition_id`) is NOT set to AUTO_INCREMENT.
-// You MUST enable AUTO_INCREMENT on your primary key columns in phpMyAdmin
-// for the application to work correctly. This is a database configuration issue.
 const dbPool = mysql.createPool({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_DATABASE,
+    port: process.env.DB_PORT,
     waitForConnections: true,
     connectionLimit: 20,
     queueLimit: 0,
-    dateStrings: true
+    dateStrings: true,
+    ssl: {
+        rejectUnauthorized: false
+    }
 });
 
 // ================== FILE STORAGE ==================
@@ -90,6 +94,7 @@ app.post('/api/login', async (req, res, next) => {
         delete user.password_hash;
         res.json({ success: true, token, user, forceReset });
     } catch (error) {
+        console.error("LOGIN_ERROR_DETAIL:", error); // For debugging
         next(error);
     }
 });
@@ -128,8 +133,8 @@ app.post('/api/requisitions', authenticateToken, anyUpload, async (req, res, nex
         for (const [i, item] of parsedItems.entries()) {
             const drawingFile = req.files.find(f => f.fieldname === `drawing_${i}`);
             const specimenFile = req.files.find(f => f.fieldname === `specimen_${i}`);
-            const drawingUrl = drawingFile ? `${req.protocol}://${req.get('host')}/uploads/${drawingFile.filename}` : null;
-            const specimenUrl = specimenFile ? `${req.protocol}://${req.get('host')}/uploads/${specimenFile.filename}` : null;
+            const drawingUrl = drawingFile ? `/uploads/${drawingFile.filename}` : null;
+            const specimenUrl = specimenFile ? `/uploads/${specimenFile.filename}` : null;
 
             await connection.query('INSERT INTO requisition_items (requisition_id, item_sl_no, item_name, item_code, description, quantity, unit, freight_required, delivery_location, drawing_url, specimen_url, status, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', 
             [reqId, i + 1, item.ItemName, item.ItemCode, item.Description, item.Quantity, item.Unit, item.FreightRequired, item.DeliveryLocation, drawingUrl, specimenUrl, 'Pending Approval', req.user.userId]);
@@ -816,11 +821,9 @@ app.get('/api/messages/:otherUserId', authenticateToken, async (req, res, next) 
 
 // --- 7. MISC & EMAIL ---
 app.post('/api/send-email', authenticateToken, async (req, res, next) => {
-    // ===== FIX: Added a server-side check for a valid SendGrid API key format.
     if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_API_KEY.startsWith('SG.')) {
         console.error("====== INVALID SENDGRID CONFIGURATION ======");
-        console.error("SENDGRID_API_KEY is missing from .env file or does not start with 'SG.'.");
-        console.error("Please get a valid API key from your SendGrid dashboard and ensure FROM_EMAIL is a verified sender.");
+        console.error("CRITICAL: SENDGRID_API_KEY is missing from .env or does not start with 'SG.'.");
         return res.status(500).json({ success: false, message: 'Email service is not configured correctly on the server.' });
     }
 
@@ -838,7 +841,6 @@ app.post('/api/send-email', authenticateToken, async (req, res, next) => {
         console.error("====== SENDGRID ERROR ======");
         console.error("Timestamp:", new Date().toISOString());
         console.error("Failed to send email to:", recipient);
-        console.error("Error Object:", error.toString());
         if (error.response) {
             console.error("SendGrid Response Body:", error.response.body);
         }
@@ -850,8 +852,8 @@ app.post('/api/send-email', authenticateToken, async (req, res, next) => {
 // ================== GLOBAL ERROR HANDLER ==================
 app.use((err, req, res, next) => {
     console.error("====== GLOBAL ERROR HANDLER CAUGHT AN ERROR ======");
-    console.error(err.stack);
-    console.error("==================================================");
+    // ===== DEBUGGING CHANGE =====
+    console.error("FULL_ERROR_OBJECT:", err);
     res.status(500).send({
         success: false,
         message: err.message || 'Something went wrong on the server!',
