@@ -16,26 +16,27 @@
 
     <style>
         :root {
-            --primary-color: #0d6efd; 
-            --secondary-color: #6c757d; 
-            --success-color: #198754;
-            --info-color: #0dcaf0; 
-            --warning-color: #ffc107; 
-            --danger-color: #dc3545;
-            --sidebar-bg: #212529; 
-            --sidebar-text: #adb5bd; 
-            --sidebar-hover-bg: #343a40;
+            --primary-color: #5E72E4; 
+            --secondary-color: #F4F5F7;
+            --success-color: #2DCE89;
+            --info-color: #11CDEF;
+            --warning-color: #FB6340;
+            --danger-color: #F5365C;
+            --sidebar-bg: #172B4D; 
+            --sidebar-text: #8898AA;
+            --sidebar-hover-bg: #1F3866;
             --sidebar-active-text: #ffffff;
-            --content-bg: #f8f9fa;
+            --content-bg: #F8F9FE;
             --card-bg: #ffffff;
-            --text-dark: #212529;
-            --text-muted: #6c757d;
-            --border-color: #dee2e6;
+            --text-dark: #32325D;
+            --text-muted: #8898AA;
+            --border-color: #E9ECEF;
         }
         
         body { 
             font-family: 'Poppins', sans-serif; 
             background-color: var(--content-bg);
+            transition: all 0.3s ease-in-out;
         }
         
         .hidden { display: none !important; }
@@ -44,78 +45,70 @@
 
         #loader-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 255, 255, 0.8); z-index: 10002; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
         #toast-container { position: fixed; top: 20px; right: 20px; z-index: 10003; }
-        .toast-notification { padding: 15px 20px; color: white; border-radius: 8px; margin-bottom: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); animation: slideIn 0.3s ease; display: flex; align-items-center; gap: 10px; }
-        .toast-notification.success { background-color: var(--success-color); }
-        .toast-notification.error { background-color: var(--danger-color); }
-        .toast-notification.info { background-color: var(--info-color); }
+        .toast-notification { padding: 15px 20px; color: white; border-radius: 8px; margin-bottom: 10px; box-shadow: 0 7px 14px rgba(50,50,93,.1), 0 3px 6px rgba(0,0,0,.08); animation: slideIn 0.3s ease; display: flex; align-items: center; gap: 10px; }
+        .toast-notification.success { background: linear-gradient(87deg, #2dce89 0, #2dcecc 100%) !important; }
+        .toast-notification.error { background: linear-gradient(87deg, #f5365c 0, #f56036 100%) !important; }
+        .toast-notification.info { background: linear-gradient(87deg, #11cdef 0, #1171ef 100%) !important; }
         @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
 
-        #login-wrapper { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #343a40; }
+        #login-wrapper { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #172B4D; }
         #login-video-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: -1; filter: brightness(0.4); }
-        #login-container { width: 100%; max-width: 420px; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-radius: 1rem; }
+        #login-container { width: 100%; max-width: 420px; background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-radius: 1rem; border: 1px solid rgba(255, 255, 255, 0.2); color: white; }
+        #login-container .form-control { background-color: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; }
+        #login-container .form-control::placeholder { color: rgba(255,255,255,0.7); }
+        #login-container .text-muted { color: rgba(255,255,255,0.8) !important; }
+        #login-container a { color: var(--info-color); }
         
         .password-container { position: relative; }
-        .password-container .toggle-password { position: absolute; top: 50%; right: 15px; transform: translateY(-50%); cursor: pointer; color: #6c757d; }
+        .password-container .toggle-password { position: absolute; top: 50%; right: 15px; transform: translateY(-50%); cursor: pointer; color: rgba(255,255,255,0.7); }
         
         .wrapper { display: flex; }
 
-        .sidebar { 
-            width: 260px; 
-            background: var(--sidebar-bg); 
-            color: var(--sidebar-text); 
-            display: flex; 
-            flex-direction: column; 
-            position: fixed;
-            top: 0;
-            left: 0;
-            height: 100vh;
-            z-index: 1001;
-            transition: all 0.3s ease-in-out;
-        }
-        .sidebar .logo { font-size: 1.4rem; font-weight: 600; text-align: center; color: white; padding: 20px 10px; border-bottom: 1px solid var(--sidebar-hover-bg); margin-bottom: 20px; }
-        .sidebar .nav-link { color: var(--sidebar-text); padding: 12px 15px; border-radius: 8px; margin-bottom: 5px; transition: all 0.2s ease; white-space: nowrap; cursor: pointer; display: flex; align-items: center;}
+        .sidebar { width: 260px; background: var(--sidebar-bg); color: var(--sidebar-text); display: flex; flex-direction: column; position: fixed; top: 0; left: 0; height: 100vh; z-index: 1001; transition: all 0.3s ease-in-out; box-shadow: 0 0 2rem 0 rgba(136,152,170,.15); }
+        .sidebar .logo { font-size: 1.2rem; font-weight: 600; text-align: center; color: white; padding: 22px 10px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 20px; }
+        .sidebar .logo i { color: var(--info-color); }
+        .sidebar .nav-link { color: var(--sidebar-text); padding: 12px 25px; border-radius: .375rem; margin: 0 1rem 5px; transition: all 0.2s ease; white-space: nowrap; cursor: pointer; display: flex; align-items: center;}
         .sidebar .nav-link:hover { background-color: var(--sidebar-hover-bg); color: var(--sidebar-active-text); }
-        .sidebar .nav-link.active { background-color: var(--primary-color); color: var(--sidebar-active-text); font-weight: 500; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
-        .sidebar .nav-link i { margin-right: 15px; width: 20px; text-align: center; }
-        .sidebar .user-profile { margin-top: auto; border-top: 1px solid var(--sidebar-hover-bg); padding: 15px 10px; text-align: center; }
+        .sidebar .nav-link.active { background: linear-gradient(87deg, #5e72e4 0, #825ee4 100%) !important; color: var(--sidebar-active-text); font-weight: 500; box-shadow: 0 7px 14px rgba(50,50,93,.1), 0 3px 6px rgba(0,0,0,.08); }
+        .sidebar .nav-link i { margin-right: 15px; width: 20px; text-align: center; font-size: .95rem; }
+        .sidebar .user-profile { margin-top: auto; border-top: 1px solid rgba(255,255,255,0.1); padding: 15px 10px; text-align: center; }
         
-        .main-content { 
-            width: 100%;
-            padding: 25px; 
-            margin-left: 260px;
-            transition: margin-left 0.3s ease-in-out;
-        }
+        .main-content { width: 100%; padding: 30px; margin-left: 260px; transition: margin-left 0.3s ease-in-out; }
         
-        /* Collapsed Sidebar Styles */
-        .sidebar.collapsed { width: 80px; }
+        .sidebar.collapsed { width: 90px; }
         .sidebar.collapsed .logo span, .sidebar.collapsed .nav-link span, .sidebar.collapsed .user-profile div { display: none; }
         .sidebar.collapsed .logo i { margin: 0; }
-        .sidebar.collapsed .nav-link i { margin: 0; }
-        body.sidebar-collapsed .main-content { margin-left: 80px; }
+        .sidebar.collapsed .nav-link { justify-content: center; }
+        .sidebar.collapsed .nav-link i { margin: 0; font-size: 1.2rem; }
+        body.sidebar-collapsed .main-content { margin-left: 90px; }
 
-        .top-header { display: flex; justify-content: space-between; align-items: center; background: var(--card-bg); padding: 15px 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); margin-bottom: 25px; }
+        .top-header { display: flex; justify-content: space-between; align-items: center; background: transparent; padding: 0; margin-bottom: 30px; }
         .sidebar-toggle-btn { background: none; border: none; font-size: 1.2rem; color: var(--text-dark); }
 
-        .stat-card { border: none; border-radius: 12px; color: white; padding: 25px; box-shadow: 0 5px 25px rgba(0,0,0,0.1); transition: transform 0.2s ease; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
-        .stat-card:hover { transform: translateY(-5px); }
-        .stat-card .display-4 { font-weight: 700; }
-        .stat-card i.stat-icon { font-size: 3.5rem; opacity: 0.2; }
-        
-        .kpi-card { background: var(--card-bg); border-radius: 12px; padding: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); display: flex; align-items: center; }
-        .kpi-card .kpi-icon { font-size: 2rem; padding: 15px; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; border-radius: 50%; margin-right: 15px; color: #fff; }
-        .kpi-card .kpi-info h6 { color: var(--text-muted); margin-bottom: 0px; text-transform: uppercase; font-size: 0.8rem;}
-        .kpi-card .kpi-info p { font-size: 1.8rem; font-weight: 700; margin-bottom: 0; line-height: 1.2;}
+        .stat-card { border: none; border-radius: .5rem; color: white; padding: 25px; box-shadow: 0 15px 35px rgba(50,50,93,.1), 0 5px 15px rgba(0,0,0,.07) !important; transition: transform 0.3s ease, box-shadow 0.3s ease; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+        .stat-card:hover { transform: translateY(-5px); box-shadow: 0 18px 35px rgba(50,50,93,.1), 0 8px 15px rgba(0,0,0,.07) !important; }
+        .stat-card .display-4 { font-weight: 600; }
+        .stat-card i.stat-icon { font-size: 3.5rem; opacity: 0.3; transform: rotate(-15deg); }
+        .bg-gradient-primary { background: linear-gradient(87deg, #5e72e4 0, #825ee4 100%) !important; }
+        .bg-gradient-success { background: linear-gradient(87deg, #2dce89 0, #2dcecc 100%) !important; }
+        .bg-gradient-warning { background: linear-gradient(87deg, #fb6340 0, #fbb140 100%) !important; }
+        .bg-gradient-info { background: linear-gradient(87deg, #11cdef 0, #1171ef 100%) !important; }
 
-        .card { border: none; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); }
-        .card-header { background-color: var(--card-bg); border-bottom: 1px solid var(--border-color); font-weight: 600; }
+        .kpi-card-small { background: var(--card-bg); border-radius: .5rem; padding: 1rem; box-shadow: 0 1px 3px rgba(50,50,93,.15), 0 1px 0 rgba(0,0,0,.02); display: flex; align-items: center; }
+        .kpi-card-small .kpi-icon { font-size: 1.5rem; padding: 12px; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; border-radius: 50%; margin-right: 15px; color: #fff; }
+        .kpi-card-small .kpi-info h6 { color: var(--text-muted); margin-bottom: 0px; text-transform: uppercase; font-size: 0.75rem; font-weight: 600;}
+        .kpi-card-small .kpi-info p { font-size: 1.5rem; font-weight: 600; margin-bottom: 0; line-height: 1.2; color: var(--text-dark);}
         
-        /* Responsive Styles */
+        .card { border: none; border-radius: .5rem; box-shadow: 0 1px 3px rgba(50,50,93,.15), 0 1px 0 rgba(0,0,0,.02); }
+        .card-header { background-color: var(--card-bg); border-bottom: 1px solid var(--border-color); font-weight: 600; padding: 1.25rem 1.5rem; }
+        .card-body { padding: 1.5rem; }
+        .table-hover>tbody>tr:hover>* { background-color: #f6f9fc; }
+
         @media (max-width: 992px) {
-            .sidebar { transform: translateX(-100%); width: 280px; } /* Always full width on mobile */
+            .sidebar { transform: translateX(-100%); width: 280px; }
             .sidebar.active { transform: translateX(0); }
             .main-content { margin-left: 0; }
             .sidebar-toggle-btn.desktop { display: none; }
-            .top-header { flex-wrap: wrap; }
             #header-title { width: 100%; text-align: center; margin-top: 10px; order: 3; }
         }
         @media (min-width: 993px) {
@@ -130,9 +123,9 @@
 
     <div id="login-wrapper">
         <video autoplay muted loop id="login-video-bg"> <source src="https://laserpowerinfra.com/frontassets/img/slider/Banner_v04_HD_L.mp4" type="video/mp4"> </video>
-        <div id="login-container" class="card p-4 p-md-5 shadow-lg border-0">
-            <h2 class="text-center mb-1"><i class="fas fa-tasks text-primary"></i> DEB'S PROCUREMENT</h2>
-            <p class="text-center text-muted mb-4">Login to your account</p>
+        <div id="login-container" class="p-4 p-md-5">
+            <h2 class="text-center mb-1 fw-bold"><i class="fas fa-tasks text-info"></i> DEB'S PROCUREMENT</h2>
+            <p class="text-center mb-4">Login to your account</p>
             <form id="login-form">
                 <div class="mb-3"><input type="email" id="email" class="form-control" placeholder="Email" required></div>
                 <div class="mb-3 password-container">
@@ -141,7 +134,7 @@
                 </div>
                 <button type="submit" class="btn btn-primary w-100 fw-bold">Log In</button>
             </form>
-            <p class="text-center mt-3">Don't have an account? <a href="#" data-bs-toggle="modal" data-bs-target="#registerModal">Register Now</a></p>
+            <p class="text-center mt-3 small">Don't have an account? <a href="#" data-bs-toggle="modal" data-bs-target="#registerModal">Register Now</a></p>
         </div>
     </div>
 
@@ -172,7 +165,7 @@
             </div>
             <div class="user-profile">
                 <div>
-                    <h6 id="user-name-sidebar" class="mb-0"></h6>
+                    <h6 id="user-name-sidebar" class="mb-0 text-white"></h6>
                     <small id="user-email-sidebar" class="text-muted"></small>
                 </div>
                 <button onclick="handleLogout()" class="btn btn-sm btn-outline-danger w-100 mt-2"><i class="fas fa-sign-out-alt"></i> <span>Logout</span></button>
@@ -184,9 +177,9 @@
                 <div class="d-flex align-items-center">
                     <button class="sidebar-toggle-btn mobile" id="sidebar-toggle-mobile"><i class="fas fa-bars"></i></button>
                     <button class="sidebar-toggle-btn desktop" id="sidebar-toggle-desktop"><i class="fas fa-bars"></i></button>
-                    <h1 id="header-title" class="h4 mb-0 ms-3"></h1>
+                    <h1 id="header-title" class="h4 mb-0 ms-3 fw-bold text-dark"></h1>
                 </div>
-                <button class="btn btn-sm btn-outline-info" onclick="handleManualRefresh()"><i class="fas fa-sync-alt me-2"></i>Refresh Data</button>
+                <button class="btn btn-sm btn-outline-primary" onclick="handleManualRefresh()"><i class="fas fa-sync-alt me-2"></i>Refresh Data</button>
             </div>
             <div id="main-view">
             </div>
@@ -221,21 +214,29 @@
         let registerModal, adminActionModal, editUserModal, bulkUploadModal, advancedBulkAwardModal, reopenBiddingModal;
         let addUserModal, forcePasswordResetModal, assignVendorsModal;
 
-        let vendorSpendChart, itemStatusChart;
+        // Chart instances
+        let charts = {};
+        
         let chatPollingInterval = null;
         let itemCounter = 0;
         
         const views = {
             'admin-dashboard-view': `
                 <div class="row g-4 mb-4">
-                    <div class="col-lg-3 col-md-6"><div class="stat-card bg-primary" onclick="navigateTo('admin-requirements-view')"><div><h5 class="mb-0">Active Items</h5><p class="display-4" id="stats-active-items">--</p></div><i class="fas fa-file-alt stat-icon"></i></div></div>
-                    <div class="col-lg-3 col-md-6"><div class="stat-card bg-success" onclick="navigateTo('admin-pending-users-view')"><div><h5 class="mb-0">Pending Users</h5><p class="display-4" id="stats-pending-users">--</p></div><i class="fas fa-user-check stat-icon"></i></div></div>
-                    <div class="col-lg-3 col-md-6"><div class="stat-card bg-warning" onclick="navigateTo('admin-bidding-history-view')"><div><h5 class="mb-0">Submitted Bids</h5><p class="display-4" id="stats-submitted-bids">--</p></div><i class="fas fa-gavel stat-icon"></i></div></div>
-                    <div class="col-lg-3 col-md-6"><div class="stat-card bg-info" onclick="navigateTo('admin-awarded-view')"><div><h5 class="mb-0">Items Awarded</h5><p class="display-4" id="stats-awarded-contracts">--</p></div><i class="fas fa-trophy stat-icon"></i></div></div>
+                    <div class="col-lg-3 col-md-6"><div class="stat-card bg-gradient-primary" onclick="navigateTo('admin-requirements-view')"><div><h5 class="mb-0">Active Items</h5><p class="display-4" id="stats-active-items">--</p></div><i class="fas fa-file-alt stat-icon"></i></div></div>
+                    <div class="col-lg-3 col-md-6"><div class="stat-card bg-gradient-success" onclick="navigateTo('admin-pending-users-view')"><div><h5 class="mb-0">Pending Users</h5><p class="display-4" id="stats-pending-users">--</p></div><i class="fas fa-user-check stat-icon"></i></div></div>
+                    <div class="col-lg-3 col-md-6"><div class="stat-card bg-gradient-warning" onclick="navigateTo('admin-pending-reqs-view')"><div><h5 class="mb-0">Pending Reqs</h5><p class="display-4" id="stats-pending-reqs">--</p></div><i class="fas fa-inbox stat-icon"></i></div></div>
+                    <div class="col-lg-3 col-md-6"><div class="stat-card bg-gradient-info" onclick="navigateTo('admin-awarded-view')"><div><h5 class="mb-0">Items Awarded</h5><p class="display-4" id="stats-awarded-contracts">--</p></div><i class="fas fa-trophy stat-icon"></i></div></div>
+                </div>
+                <div class="row g-4 mb-4">
+                    <div class="col-lg-3 col-md-6"><div class="kpi-card-small"><div class="kpi-icon bg-primary"><i class="fas fa-calendar-day"></i></div><div class="kpi-info"><h6>Reqs Today</h6><p id="stats-reqs-today">--</p></div></div></div>
+                    <div class="col-lg-3 col-md-6"><div class="kpi-card-small"><div class="kpi-icon bg-info"><i class="fas fa-users"></i></div><div class="kpi-info"><h6>Active Vendors</h6><p id="stats-active-vendors">--</p></div></div></div>
+                    <div class="col-lg-3 col-md-6"><div class="kpi-card-small"><div class="kpi-icon bg-warning"><i class="fas fa-hourglass-half"></i></div><div class="kpi-info"><h6>Avg. Approval</h6><p id="stats-avg-approval-time">--</p></div></div></div>
+                    <div class="col-lg-3 col-md-6"><div class="kpi-card-small"><div class="kpi-icon bg-danger"><i class="fas fa-exclamation-triangle"></i></div><div class="kpi-info"><h6>No Bids</h6><p id="stats-no-bids">--</p></div></div></div>
                 </div>
                 <div class="row g-4">
-                    <div class="col-lg-7"><div class="card h-100"><div class="card-header d-flex justify-content-between align-items-center"><h5 class="mb-0">Pending Requisitions</h5><a href="#" class="small" onclick="navigateTo('admin-pending-reqs-view')">View All</a></div><div id="admin-dashboard-reqs" class="list-group list-group-flush" style="max-height: 350px; overflow-y: auto;"></div></div></div>
-                    <div class="col-lg-5"><div class="card h-100"><div class="card-header d-flex justify-content-between align-items-center"><h5 class="mb-0">Recent Bids</h5><a href="#" class="small" onclick="navigateTo('admin-bidding-history-view')">View All</a></div><div id="admin-dashboard-bids" class="list-group list-group-flush" style="max-height: 350px; overflow-y: auto;"></div></div></div>
+                    <div class="col-lg-8"><div class="card h-100"><div class="card-header"><h5 class="mb-0">Recent Activity (Last 7 Days)</h5></div><div class="card-body"><canvas id="adminActivityChart"></canvas></div></div></div>
+                    <div class="col-lg-4"><div class="card h-100"><div class="card-header"><h5 class="mb-0">Items Requiring Attention</h5></div><div id="admin-attention-items" class="list-group list-group-flush" style="max-height: 350px; overflow-y: auto;"></div></div></div>
                 </div>`,
             'admin-pending-reqs-view': `<div class="card"><div class="card-header"><h5 class="mb-0">Pending Requisition Approvals</h5></div><div class="card-body"><div class="accordion" id="pending-reqs-accordion"></div></div></div>`,
             'admin-requirements-view': `<div class="card">
@@ -257,31 +258,66 @@
                     </div>
                 </div>
                 <div class="card-body table-responsive"><table class="table table-hover align-middle" id="admin-awarded-table"><thead class="table-light"><tr><th><input type="checkbox" onchange="toggleAllInParent(this, 'awarded-item-checkbox')"></th><th>Req. ID</th><th>Item Name</th><th>Vendor</th><th>Ex-works (₹)</th><th>Freight (₹)</th><th>Total (₹)</th><th>Date</th><th>Actions</th></tr></thead><tbody id="admin-awarded-tbody"></tbody></table></div></div>`,
-            'admin-reports-view': `<h4 class="mb-4">Procurement Analytics Dashboard</h4>
-                <div class="card mb-4"><div class="card-body"><div class="row g-3 align-items-center">
+            'admin-reports-view': `
+                <div class="card mb-4"><div class="card-body py-3"><div class="row g-3 align-items-center">
                     <div class="col-md-5"><label class="form-label form-label-sm">Start Date</label><input type="date" id="report-start-date" class="form-control form-control-sm"></div>
                     <div class="col-md-5"><label class="form-label form-label-sm">End Date</label><input type="date" id="report-end-date" class="form-control form-control-sm"></div>
                     <div class="col-md-2 d-grid"><button id="report-apply-filter" class="btn btn-primary btn-sm mt-md-3">Apply Filter</button></div>
                 </div></div></div>
+
+                <h5 class="mb-3">Key Performance Indicators</h5>
                 <div class="row g-4 mb-4">
-                    <div class="col-lg-3 col-md-6"><div class="kpi-card"><div class="kpi-icon bg-primary"><i class="fas fa-wallet"></i></div><div class="kpi-info"><h6 class>Total Spend</h6><p id="report-total-spend">₹0</p></div></div></div>
-                    <div class="col-lg-3 col-md-6"><div class="kpi-card"><div class="kpi-icon bg-success"><i class="fas fa-piggy-bank"></i></div><div class="kpi-info"><h6 class>Cost Savings (vs L2)</h6><p id="report-cost-savings">₹0</p></div></div></div>
-                    <div class="col-lg-3 col-md-6"><div class="kpi-card"><div class="kpi-icon bg-info"><i class="fas fa-gavel"></i></div><div class="kpi-info"><h6 class>Avg. Bids / Item</h6><p id="report-avg-bids">0</p></div></div></div>
-                    <div class="col-lg-3 col-md-6"><div class="kpi-card"><div class="kpi-icon bg-warning"><i class="fas fa-clock"></i></div><div class="kpi-info"><h6 class>Avg. Cycle Time</h6><p id="report-cycle-time">0 Days</p></div></div></div>
+                    <div class="col-lg-3 col-md-6"><div class="kpi-card-small"><div class="kpi-icon bg-primary"><i class="fas fa-wallet"></i></div><div class="kpi-info"><h6>Total Spend</h6><p id="report-total-spend">₹0</p></div></div></div>
+                    <div class="col-lg-3 col-md-6"><div class="kpi-card-small"><div class="kpi-icon bg-success"><i class="fas fa-piggy-bank"></i></div><div class="kpi-info"><h6>Total Savings</h6><p id="report-cost-savings">₹0</p></div></div></div>
+                    <div class="col-lg-3 col-md-6"><div class="kpi-card-small"><div class="kpi-icon bg-info"><i class="fas fa-users"></i></div><div class="kpi-info"><h6>Vendor Participation</h6><p id="report-vendor-participation">0%</p></div></div></div>
+                    <div class="col-lg-3 col-md-6"><div class="kpi-card-small"><div class="kpi-icon bg-warning"><i class="fas fa-trophy"></i></div><div class="kpi-info"><h6>L1 Award Rate</h6><p id="report-l1-award-rate">0%</p></div></div></div>
                 </div>
+                
+                <h5 class="mb-3 mt-4">Visual Analytics</h5>
                 <div class="row g-4">
-                    <div class="col-lg-8"><div class="card h-100"><div class="card-header">Spend by Vendor</div><div class="card-body"><canvas id="vendorSpendChart"></canvas></div></div></div>
-                    <div class="col-lg-4"><div class="card h-100"><div class="card-header">Item Status Overview</div><div class="card-body d-flex align-items-center justify-content-center"><canvas id="itemStatusChart" style="max-height: 300px;"></canvas></div></div></div>
-                </div>`,
-            'admin-pending-users-view': `<div class="card"><div class="card-header"><h5 class="mb-0">Pending User Approvals</h5></div><div class="card-body table-responsive"><table class="table align-middle" id="admin-pending-users-table"><thead class="table-light"><tr><th>Name</th><th>Email</th><th>Role</th><th>Company</th><th>Contact</th><th>Action</th></tr></thead><tbody id="admin-pending-users-tbody"></tbody></table></div></div>`,
-            'admin-user-control-view': `<div class="card"><div class="card-header d-flex justify-content-between align-items-center"><h5 class="mb-0">User Control Center</h5><button class="btn btn-success btn-sm" onclick="openAddUserModal()"><i class="fas fa-plus me-2"></i>Add User</button></div><div class="card-body table-responsive"><table class="table align-middle" id="admin-users-table"><thead class="table-light"><tr><th>Name</th><th>Email</th><th>Role</th><th>Company</th><th>Contact</th><th>GSTIN</th><th>Action</th></tr></thead><tbody id="admin-users-tbody"></tbody></table></div></div>`,
+                    <div class="col-lg-8"><div class="card h-100"><div class="card-header">Top 5 Vendors by Spend</div><div class="card-body"><canvas id="vendorSpendChart"></canvas></div></div></div>
+                    <div class="col-lg-4"><div class="card h-100"><div class="card-header">Spend by Item Category</div><div class="card-body d-flex align-items-center justify-content-center"><canvas id="categorySpendChart" style="max-height: 300px;"></canvas></div></div></div>
+                    <div class="col-lg-12"><div class="card h-100"><div class="card-header">Monthly Savings Trend</div><div class="card-body"><canvas id="savingsTrendChart"></canvas></div></div></div>
+                </div>
+
+                <div class="card mt-4">
+                    <div class="card-header d-flex justify-content-between">
+                        <h5 class="mb-0">Detailed Awarded Contracts Report</h5>
+                        <button class="btn btn-sm btn-outline-success" onclick="downloadDetailedReport()"><i class="fas fa-download me-2"></i>Download Full Report</button>
+                    </div>
+                    <div class="card-body table-responsive">
+                        <table class="table table-sm table-hover" id="detailed-report-table">
+                            <thead class="table-light"><tr><th>Req ID</th><th>Item Name</th><th>Vendor</th><th>Awarded Amount (₹)</th><th>Award Date</th></tr></thead>
+                            <tbody id="detailed-report-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                `,
+            'admin-pending-users-view': `<div class="card"><div class="card-header"><h5 class="mb-0">Pending User Approvals</h5></div><div class="card-body table-responsive"><table class="table table-hover align-middle" id="admin-pending-users-table"><thead class="table-light"><tr><th>Name</th><th>Email</th><th>Role</th><th>Company</th><th>Contact</th><th>Action</th></tr></thead><tbody id="admin-pending-users-tbody"></tbody></table></div></div>`,
+            'admin-user-control-view': `<div class="card"><div class="card-header d-flex justify-content-between align-items-center"><h5 class="mb-0">User Control Center</h5><button class="btn btn-success btn-sm" onclick="openAddUserModal()"><i class="fas fa-plus me-2"></i>Add User</button></div><div class="card-body table-responsive"><table class="table table-hover align-middle" id="admin-users-table"><thead class="table-light"><tr><th>Name</th><th>Email</th><th>Role</th><th>Company</th><th>Contact</th><th>GSTIN</th><th>Action</th></tr></thead><tbody id="admin-users-tbody"></tbody></table></div></div>`,
             
             'vendor-dashboard-view': `
+                <div class="row g-4 mb-4">
+                    <div class="col-lg-3 col-md-6"><div class="stat-card bg-gradient-info" onclick="navigateTo('vendor-requirements-view')"><div><h5 class="mb-0">Assigned Items</h5><p class="display-4" id="vendor-stats-assigned">--</p></div><i class="fas fa-file-signature stat-icon"></i></div></div>
+                    <div class="col-lg-3 col-md-6"><div class="stat-card bg-gradient-primary" onclick="navigateTo('vendor-my-bids-view')"><div><h5 class="mb-0">Bids Submitted</h5><p class="display-4" id="vendor-stats-submitted">--</p></div><i class="fas fa-gavel stat-icon"></i></div></div>
+                    <div class="col-lg-3 col-md-6"><div class="stat-card bg-gradient-success" onclick="navigateTo('vendor-awarded-view')"><div><h5 class="mb-0">Contracts Won</h5><p class="display-4" id="vendor-stats-won">--</p></div><i class="fas fa-trophy stat-icon"></i></div></div>
+                    <div class="col-lg-3 col-md-6"><div class="stat-card bg-gradient-warning" onclick="navigateTo('vendor-requirements-view')"><div><h5 class="mb-0">Needs My Bid</h5><p class="display-4" id="vendor-stats-needs-bid">--</p></div><i class="fas fa-edit stat-icon"></i></div></div>
+                </div>
                 <div class="row g-4">
-                    <div class="col-md-4"><div class="stat-card bg-info" onclick="navigateTo('vendor-requirements-view')"><div><h5 class="mb-0">Assigned Items</h5><p class="display-4" id="vendor-stats-assigned">--</p></div><i class="fas fa-file-signature stat-icon"></i></div></div>
-                    <div class="col-md-4"><div class="stat-card bg-secondary" onclick="navigateTo('vendor-my-bids-view')"><div><h5 class="mb-0">Bids Submitted</h5><p class="display-4" id="vendor-stats-submitted">--</p></div><i class="fas fa-gavel stat-icon"></i></div></div>
-                    <div class="col-md-4"><div class="stat-card bg-success" onclick="navigateTo('vendor-awarded-view')"><div><h5 class="mb-0">Contracts Won</h5><p class="display-4" id="vendor-stats-won">--</p></div><i class="fas fa-trophy stat-icon"></i></div></div>
-                </div>`,
+                    <div class="col-lg-4"><div class="kpi-card-small h-100"><div class="kpi-icon bg-info"><i class="fas fa-medal"></i></div><div class="kpi-info"><h6>My L1 Bids</h6><p id="vendor-stats-l1-bids">--</p></div></div></div>
+                    <div class="col-lg-4"><div class="kpi-card-small h-100"><div class="kpi-icon bg-success"><i class="fas fa-wallet"></i></div><div class="kpi-info"><h6>Total Won Value</h6><p id="vendor-stats-won-value">--</p></div></div></div>
+                    <div class="col-lg-4"><div class="card h-100"><div class="card-header"><h6 class="mb-0">My Bid Status</h6></div><div class="card-body d-flex justify-content-center align-items-center"><canvas id="vendorBidStatusChart" style="max-height: 150px;"></canvas></div></div></div>
+                </div>
+                 <div class="card mt-4">
+                    <div class="card-header"><h5 class="mb-0">Recently Assigned Items</h5></div>
+                    <div class="card-body table-responsive p-0">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light"><tr><th>Item</th><th>Assigned On</th><th>Action</th></tr></thead>
+                            <tbody id="vendor-recent-items-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                `,
             'vendor-requirements-view': `<div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                         <h5 class="mb-0">My Open Requirements for Bidding</h5>
@@ -292,8 +328,8 @@
                         <tbody id="vendor-reqs-tbody"></tbody>
                     </table></div></div>
                 </div>`,
-            'vendor-my-bids-view': `<div class="card"><div class="card-header d-flex justify-content-between align-items-center"><h5 class="mb-0">My Bidding History</h5><button class="btn btn-sm btn-success" onclick="downloadMyBidsReport()"><i class="fas fa-download me-2"></i>Download Report</button></div><div class="card-body table-responsive"><table class="table align-middle" id="vendor-bids-table"><thead class="table-light"><tr><th>Req. ID</th><th>Item Name</th><th>My Bid (₹)</th><th>My Rank</th><th>Status</th><th>Date</th></tr></thead><tbody id="vendor-bids-tbody"></tbody></table></div></div>`,
-            'vendor-awarded-view': `<div class="card"><div class="card-header d-flex justify-content-between align-items-center"><h5 class="mb-0">My Awarded Contracts</h5><button class="btn btn-sm btn-success" onclick="downloadMyAwardedContractsReport()"><i class="fas fa-download me-2"></i>Download Report</button></div><div class="card-body table-responsive"><table class="table align-middle" id="vendor-awarded-table"><thead class="table-light"><tr><th>Req. ID</th><th>Item</th><th>Amount (₹)</th><th>Date</th></tr></thead><tbody id="vendor-awarded-tbody"></tbody></table></div></div>`,
+            'vendor-my-bids-view': `<div class="card"><div class="card-header d-flex justify-content-between align-items-center"><h5 class="mb-0">My Bidding History</h5><button class="btn btn-sm btn-success" onclick="downloadMyBidsReport()"><i class="fas fa-download me-2"></i>Download Report</button></div><div class="card-body table-responsive"><table class="table table-hover align-middle" id="vendor-bids-table"><thead class="table-light"><tr><th>Req. ID</th><th>Item Name</th><th>My Bid (₹)</th><th>My Rank</th><th>Status</th><th>Date</th></tr></thead><tbody id="vendor-bids-tbody"></tbody></table></div></div>`,
+            'vendor-awarded-view': `<div class="card"><div class="card-header d-flex justify-content-between align-items-center"><h5 class="mb-0">My Awarded Contracts</h5><button class="btn btn-sm btn-success" onclick="downloadMyAwardedContractsReport()"><i class="fas fa-download me-2"></i>Download Report</button></div><div class="card-body table-responsive"><table class="table table-hover align-middle" id="vendor-awarded-table"><thead class="table-light"><tr><th>Req. ID</th><th>Item</th><th>Amount (₹)</th><th>Date</th></tr></thead><tbody id="vendor-awarded-tbody"></tbody></table></div></div>`,
             
             'user-create-req-view': `<div class="card"><div class="card-header"><h5 class="mb-0"><i class="fas fa-edit me-2"></i>Create a New Requisition</h5></div><div class="card-body"><form id="requisition-form"><div id="requisition-items-container"></div><button type="button" class="btn btn-outline-secondary w-100 mb-3" onclick="addRequisitionItem()"><i class="fas fa-plus me-2"></i>Add another item</button><div class="card p-3 mb-3"><h6 class="mt-2 d-flex justify-content-between align-items-center">Select Vendors to Notify<div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="select-all-vendors-user"><label class="form-check-label small" for="select-all-vendors-user">Select All</label></div></h6><div id="req-vendor-checklist" class="border rounded p-3" style="max-height: 150px; overflow-y: auto;"></div></div><button type="submit" class="btn btn-primary w-100 fw-bold">Submit Requisition for Approval</button></form></div></div>`,
             'user-status-view': `<div class="card"><div class="card-header"><h5 class="mb-0"><i class="fas fa-history me-2"></i>My Requisition Status</h5></div><div class="card-body" id="user-req-status-list"></div></div>`,
@@ -354,7 +390,7 @@
                 const passwordInput = $('#password');
                 const type = passwordInput.attr('type') === 'password' ? 'text' : 'password';
                 passwordInput.attr('type', type);
-                $(this).toggleClass('fa-eye-slash');
+                $(this).toggleClass('fa-eye-slash fa-eye');
             });
         });
 
@@ -375,13 +411,13 @@
                 const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
                 
                 if (response.status === 401 || (response.status === 403 && !isFormData)) { 
-                     const errorData = await response.clone().json().catch(() => ({}));
-                     if (errorData.message && errorData.message.includes('maximum of 3 bids')) {
+                    const errorData = await response.clone().json().catch(() => ({}));
+                    if (errorData.message && errorData.message.includes('maximum of 3 bids')) {
                           throw new Error(errorData.message);
-                     }
-                    showToast('Session expired or forbidden. Please log in again.', 'error');
-                    handleLogout();
-                    return { success: false, error: 'Unauthorized' };
+                    }
+                   showToast('Session expired or forbidden. Please log in again.', 'error');
+                   handleLogout();
+                   return { success: false, error: 'Unauthorized' };
                 }
 
                 const result = await response.json();
@@ -481,26 +517,32 @@
         async function load_admin_dashboard_view() {
             const result = await apiCall('/admin/dashboard-stats');
             if (result.success) {
-                $('#stats-active-items').text(result.data.activeItems);
-                $('#stats-pending-users').text(result.data.pendingUsers);
-                $('#stats-submitted-bids').text(result.data.submittedBids);
-                $('#stats-awarded-contracts').text(result.data.awardedContracts);
+                const data = result.data;
+                $('#stats-active-items').text(data.activeItems);
+                $('#stats-pending-users').text(data.pendingUsers);
+                $('#stats-pending-reqs').text(data.pendingRequisitionsCount);
+                $('#stats-awarded-contracts').text(data.awardedContracts);
+                $('#stats-reqs-today').text(data.reqsToday);
+                $('#stats-active-vendors').text(data.activeVendors);
+                $('#stats-avg-approval-time').text(data.avgApprovalTime > 0 ? `${data.avgApprovalTime} Days` : 'N/A');
+                $('#stats-no-bids').text(data.itemsWithNoBids);
                 
-                $('#admin-dashboard-reqs').html(result.data.pendingRequisitions.map(req => `
-                    <a href="#" onclick="navigateTo('admin-pending-reqs-view')" class="list-group-item list-group-item-action">
+                $('#admin-attention-items').html(data.attentionItems.map(item => `
+                    <a href="#" onclick="openAdminActionModal(${item.item_id}, '${item.item_name.replace(/'/g, "\\'")}')" class="list-group-item list-group-item-action">
                         <div class="d-flex w-100 justify-content-between">
-                            <h6 class="mb-1">${req.item_name}</h6><small>${new Date(req.created_at).toLocaleDateString()}</small>
+                            <h6 class="mb-1 small">${item.item_name}</h6>
+                            <span class="badge bg-danger">No Bids</span>
                         </div>
-                        <p class="mb-1 small">Req ID: REQ-${req.requisition_id}-${req.item_sl_no} | By: ${req.full_name}</p>
-                    </a>`).join('') || '<div class="list-group-item">No pending requisitions.</div>');
+                        <p class="mb-1 small text-muted">Req ID: REQ-${item.requisition_id}-${item.item_sl_no}</p>
+                    </a>`).join('') || '<div class="list-group-item text-center text-muted small p-3">No high-priority items.</div>');
 
-                $('#admin-dashboard-bids').html(result.data.recentBids.map(bid => `
-                    <a href="#" onclick="navigateTo('admin-bidding-history-view')" class="list-group-item list-group-item-action">
-                        <div class="d-flex w-100 justify-content-between">
-                            <h6 class="mb-1">${bid.item_name}</h6><small>${formatCurrency(bid.bid_amount)}</small>
-                        </div>
-                        <p class="mb-1 small">By: ${bid.vendor_name} on ${new Date(bid.submitted_at).toLocaleDateString()}</p>
-                    </a>`).join('') || '<div class="list-group-item">No recent bids.</div>');
+                createChart('adminActivityChart', 'line', {
+                    labels: data.activityChart.labels,
+                    datasets: [
+                        { label: 'Requisitions', data: data.activityChart.requisitions, borderColor: '#5E72E4', tension: 0.4, fill: false },
+                        { label: 'Bids', data: data.activityChart.bids, borderColor: '#2DCE89', tension: 0.4, fill: false }
+                    ]
+                });
             }
         }
 
@@ -595,6 +637,7 @@
         
         async function load_admin_pending_users_view() { const result = await apiCall('/users/pending'); if (result.success) { $('#admin-pending-users-tbody').html(result.data.map(user => `<tr><td>${user.full_name}</td><td>${user.email}</td><td>${user.role}</td><td>${user.company_name || '-'}</td><td>${user.contact_number || '-'}</td><td><button class="btn btn-sm btn-success" onclick="approveUser(${user.temp_id})">Approve</button></td></tr>`).join('') || `<tr><td colspan="6" class="text-center">No pending users.</td></tr>`); } }
         async function load_admin_user_control_view() { const result = await apiCall('/users'); if(result.success) { $('#admin-users-tbody').html(result.data.map(user => `<tr><td>${user.full_name}</td><td>${user.email}</td><td>${user.role}</td><td>${user.company_name || '-'}</td><td>${user.contact_number || '-'}</td><td>${user.gstin || '-'}</td><td><button class="btn btn-sm btn-primary" onclick='openEditUserModal(${JSON.stringify(user)})'>Edit</button></td></tr>`).join('') || `<tr><td colspan="7" class="text-center">No users found.</td></tr>`); } }
+        
         async function load_admin_reports_view() {
             $('#report-apply-filter').off('click').on('click', updateReportView);
             updateReportView();
@@ -603,9 +646,29 @@
         async function load_vendor_dashboard_view() {
             const result = await apiCall('/vendor/dashboard-stats');
             if (result.success) {
-                $('#vendor-stats-assigned').text(result.data.assignedItems);
-                $('#vendor-stats-submitted').text(result.data.submittedBids);
-                $('#vendor-stats-won').text(result.data.contractsWon);
+                const data = result.data;
+                $('#vendor-stats-assigned').text(data.assignedItems);
+                $('#vendor-stats-submitted').text(data.submittedBids);
+                $('#vendor-stats-won').text(data.contractsWon);
+                $('#vendor-stats-needs-bid').text(data.needsBid);
+                $('#vendor-stats-l1-bids').text(data.l1Bids);
+                $('#vendor-stats-won-value').text(formatCurrency(data.totalWonValue));
+
+                $('#vendor-recent-items-tbody').html(data.recentItems.map(item => `
+                    <tr>
+                        <td>${item.item_name}<br><small class="text-muted">REQ-${item.requisition_id}-${item.item_sl_no}</small></td>
+                        <td>${new Date(item.assigned_at).toLocaleDateString()}</td>
+                        <td><button class="btn btn-sm btn-primary" onclick="navigateTo('vendor-requirements-view')">Bid Now</button></td>
+                    </tr>
+                `).join('') || '<tr><td colspan="3" class="text-center p-3 text-muted">No new items assigned.</td></tr>');
+
+                createChart('vendorBidStatusChart', 'doughnut', {
+                    labels: data.bidStatusChart.labels,
+                    datasets: [{
+                        data: data.bidStatusChart.data,
+                        backgroundColor: ['#11CDEF', '#2DCE89', '#F5365C'],
+                    }]
+                }, { plugins: { legend: { display: false } } });
             }
         }
         
@@ -634,11 +697,11 @@
                     const freightReadonly = !item.freight_required ? 'readonly' : '';
                     const bidRow = `
                         <tr class="bidding-row">
-                            <td colspan="4">
-                                <div class="row g-3 align-items-center">
-                                    <div class="col-md-3"><label class="form-label small">Ex-works Rate/Unit (₹)</label><input type="number" step="0.01" class="form-control form-control-sm ex-works-rate" value="${item.my_ex_works_rate || ''}" oninput="calculateTotalBid(this)"></div>
-                                    <div class="col-md-3"><label class="form-label small">Freight Rate/Unit (₹)</label><input type="number" step="0.01" class="form-control form-control-sm freight-rate" value="${freightValue}" oninput="calculateTotalBid(this)" ${freightReadonly}></div>
-                                    <div class="col-md-3"><label class="form-label small">Total Bid Amount (₹)</label><p class="form-control-plaintext fw-bold total-bid-amount">${formatCurrency(item.my_bid_amount) || '₹0.00'}</p></div>
+                            <td colspan="4" class="p-3 bg-light">
+                                <div class="row g-2 align-items-center">
+                                    <div class="col-md-3"><label class="form-label small mb-1">Ex-works Rate/Unit (₹)</label><input type="number" step="0.01" class="form-control form-control-sm ex-works-rate" value="${item.my_ex_works_rate || ''}" oninput="calculateTotalBid(this)"></div>
+                                    <div class="col-md-3"><label class="form-label small mb-1">Freight Rate/Unit (₹)</label><input type="number" step="0.01" class="form-control form-control-sm freight-rate" value="${freightValue}" oninput="calculateTotalBid(this)" ${freightReadonly}></div>
+                                    <div class="col-md-3"><label class="form-label small mb-1">Total Bid Amount (₹)</label><p class="form-control-plaintext fw-bold total-bid-amount ps-2">${formatCurrency(item.my_bid_amount) || '₹0.00'}</p></div>
                                     <div class="col-md-3 d-grid"></div>
                                 </div>
                             </td>
@@ -1032,11 +1095,11 @@
         // =========================================================
         async function fetchProductList(){if(PRODUCT_LIST.length>0)return;try{const r=await fetch(PRODUCT_DATA_URL);if(!r.ok) throw new Error('Network response not ok');PRODUCT_LIST=await r.json()}catch(e){showToast('Could not load product master data. Please refresh.','error'); console.error(e); $('#requisition-items-container').html(`<div class="alert alert-danger">Failed to load product list. Please try refreshing the page.</div>`)}}
         async function fetchLocationDropdownData(){if(LOCATION_DROPDOWN_DATA.length>0)return;const r=await apiCall('/dropdowns/locations');if(r.success)LOCATION_DROPDOWN_DATA=r.data}
-        function showToast(m,t='info'){const icon={'success':'fa-check-circle','error':'fa-times-circle','info':'fa-info-circle'}[t]||'fa-info-circle';const c=$('#toast-container'),e=$(`<div><i class="fas ${icon}"></i><span>${m}</span></div>`).addClass(`toast-notification ${t}`);c.append(e);setTimeout(()=>e.remove(),5000)}
+        function showToast(m,t='info'){const c=$('#toast-container'),e=$(`<div><i class="fas ${t === 'success' ? 'fa-check-circle' : 'fa-times-circle'} me-2"></i><span>${m}</span></div>`).addClass(`toast-notification ${t}`);c.append(e);setTimeout(()=>e.remove(),5000)}
         function showLoader(){$('#loader-overlay').removeClass('hidden')}
         function hideLoader(){$('#loader-overlay').addClass('hidden')}
         function toggleAllInParent(source, targetClass) { $(source).closest('table, .modal-body, .accordion-body, .card, .mb-3').find(`input[type="checkbox"].${targetClass}`).not(':disabled').prop('checked', source.checked); }
-        function formatCurrency(v){const n=parseFloat(v);return isNaN(n)?'-':`₹${n.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}`}
+        function formatCurrency(v){const n=parseFloat(v);return isNaN(n)?'₹0.00':`₹${n.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}`}
         function getBadgeColor(s){return {'Awarded':'primary','Active':'success','Pending Approval':'warning','Submitted':'info','Rejected':'danger','Processed': 'secondary', 'Bidding Closed': 'dark'}[s]||'dark'}
         function createImageLinks(item) {
             if (!item.drawing_url && !item.specimen_url) return '-';
@@ -1045,21 +1108,57 @@
             if(item.specimen_url) links.push(`<a href="${item.specimen_url}" target="_blank" onclick="event.stopPropagation()" title="Specimen"><i class="fas fa-image"></i></a>`);
             return links.join(' ');
         }
-
+        function createChart(chartId, type, data, options = {}) {
+            if (charts[chartId]) charts[chartId].destroy();
+            const ctx = document.getElementById(chartId).getContext('2d');
+            charts[chartId] = new Chart(ctx, { type, data, options });
+        }
+        
         async function updateReportView() {
             const startDate = $('#report-start-date').val();
             const endDate = $('#report-end-date').val();
             const result = await apiCall('/admin/reports-data', 'POST', { startDate, endDate });
             if (!result.success) return;
-            const { kpis, spendByVendor, itemStatusCounts } = result.data;
-            $('#report-total-spend').text(formatCurrency(kpis.totalSpend));
-            $('#report-cost-savings').text(formatCurrency(kpis.costSavings));
-            $('#report-avg-bids').text(parseFloat(kpis.avgBids).toFixed(1));
-            $('#report-cycle-time').text(`${parseFloat(kpis.avgCycleTime).toFixed(0)} Days`);
-            if(vendorSpendChart) vendorSpendChart.destroy();
-            vendorSpendChart = new Chart($('#vendorSpendChart'), { type: 'bar', data: { labels: spendByVendor.labels, datasets: [{ label: 'Total Spend (₹)', data: spendByVendor.data, backgroundColor: '#0d6efd' }] }, options: { scales: { y: { beginAtZero: true } }, responsive: true, maintainAspectRatio: false } });
-            if(itemStatusChart) itemStatusChart.destroy();
-            itemStatusChart = new Chart($('#itemStatusChart'), { type: 'doughnut', data: { labels: itemStatusCounts.labels, datasets: [{ data: itemStatusCounts.data, backgroundColor: ['#198754', '#ffc107', '#0d6efd', '#6c757d', '#dc3545', '#0dcaf0'], }] }, options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'right' } } } });
+            const data = result.data;
+            
+            // KPIs
+            $('#report-total-spend').text(formatCurrency(data.kpis.totalSpend));
+            $('#report-cost-savings').text(formatCurrency(data.kpis.totalSavings));
+            $('#report-vendor-participation').text(`${data.kpis.vendorParticipationRate.toFixed(1)}%`);
+            $('#report-l1-award-rate').text(`${data.kpis.l1AwardRate.toFixed(1)}%`);
+
+            // Charts
+            createChart('vendorSpendChart', 'bar', {
+                labels: data.topVendors.labels,
+                datasets: [{ label: 'Total Spend (₹)', data: data.topVendors.data, backgroundColor: '#5E72E4' }]
+            }, { indexAxis: 'y' });
+
+            createChart('categorySpendChart', 'doughnut', {
+                labels: data.spendByCategory.labels,
+                datasets: [{ data: data.spendByCategory.data, backgroundColor: ['#5E72E4', '#2DCE89', '#FB6340', '#11CDEF', '#F4F5F7'] }]
+            }, { plugins: { legend: { position: 'right' } } });
+
+            createChart('savingsTrendChart', 'line', {
+                labels: data.savingsTrend.labels,
+                datasets: [{ label: 'Monthly Savings (₹)', data: data.savingsTrend.data, borderColor: '#2DCE89', tension: 0.4, fill: false }]
+            });
+
+            // Detailed Table
+            const reportTbody = $('#detailed-report-tbody');
+            reportTbody.empty();
+            if(data.detailedReport.length > 0) {
+                data.detailedReport.forEach(row => {
+                    reportTbody.append(`<tr>
+                        <td>REQ-${row.requisition_id}-${row.item_sl_no}</td>
+                        <td>${row.item_name}</td>
+                        <td>${row.vendor_name}</td>
+                        <td>${formatCurrency(row.awarded_amount)}</td>
+                        <td>${new Date(row.awarded_date).toLocaleDateString()}</td>
+                    </tr>`);
+                });
+            } else {
+                reportTbody.append(`<tr><td colspan="5" class="text-center text-muted p-3">No data for the selected period.</td></tr>`);
+            }
         }
         
         async function sendConsolidatedAwardEmails(winningBids) {
@@ -1082,7 +1181,7 @@
                 
                 const htmlBody = `
                     <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 20px auto; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">
-                        <div style="background-color: #0d6efd; color: white; padding: 20px; text-align: center;">
+                        <div style="background-color: #5E72E4; color: white; padding: 20px; text-align: center;">
                             <h1 style="margin: 0;">Contract Awarded</h1>
                         </div>
                         <div style="padding: 20px;">
@@ -1202,5 +1301,4 @@
         }
     </script>
 </body>
-
 </html>
