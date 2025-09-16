@@ -22,13 +22,15 @@
             --info-color: #0dcaf0; 
             --warning-color: #ffc107; 
             --danger-color: #dc3545;
-            --sidebar-bg: #2c3e50; 
-            --sidebar-text: #ecf0f1; 
-            --sidebar-hover: #34495e;
-            --content-bg: #f4f7f6;
+            --sidebar-bg: #212529; 
+            --sidebar-text: #adb5bd; 
+            --sidebar-hover-bg: #343a40;
+            --sidebar-active-text: #ffffff;
+            --content-bg: #f8f9fa;
             --card-bg: #ffffff;
-            --text-dark: #343a40;
+            --text-dark: #212529;
             --text-muted: #6c757d;
+            --border-color: #dee2e6;
         }
         
         body { 
@@ -37,12 +39,12 @@
         }
         
         .hidden { display: none !important; }
-        .view { animation: fadeIn 0.5s; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .view { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
 
-        #loader-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 255, 255, 0.8); z-index: 10002; display: flex; align-items: center; justify-content: center; }
+        #loader-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 255, 255, 0.8); z-index: 10002; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
         #toast-container { position: fixed; top: 20px; right: 20px; z-index: 10003; }
-        .toast-notification { padding: 15px 20px; color: white; border-radius: 8px; margin-bottom: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); animation: slideIn 0.3s ease; }
+        .toast-notification { padding: 15px 20px; color: white; border-radius: 8px; margin-bottom: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); animation: slideIn 0.3s ease; display: flex; align-items-center; gap: 10px; }
         .toast-notification.success { background-color: var(--success-color); }
         .toast-notification.error { background-color: var(--danger-color); }
         .toast-notification.info { background-color: var(--info-color); }
@@ -55,12 +57,10 @@
         .password-container { position: relative; }
         .password-container .toggle-password { position: absolute; top: 50%; right: 15px; transform: translateY(-50%); cursor: pointer; color: #6c757d; }
         
-        .wrapper {
-            display: flex;
-        }
+        .wrapper { display: flex; }
 
         .sidebar { 
-            width: 280px; 
+            width: 260px; 
             background: var(--sidebar-bg); 
             color: var(--sidebar-text); 
             display: flex; 
@@ -68,26 +68,33 @@
             position: fixed;
             top: 0;
             left: 0;
-            height: 100%;
+            height: 100vh;
             z-index: 1001;
-            transition: transform 0.3s ease-in-out;
+            transition: all 0.3s ease-in-out;
         }
-        .sidebar .logo { font-size: 1.6rem; font-weight: 700; text-align: center; color: white; padding: 20px 10px; border-bottom: 1px solid var(--sidebar-hover); margin-bottom: 20px; }
-        .sidebar .nav-link { color: var(--sidebar-text); padding: 12px 15px; border-radius: 8px; margin-bottom: 5px; transition: all 0.3s ease; white-space: nowrap; cursor: pointer; display: flex; align-items: center;}
-        .sidebar .nav-link:hover { background-color: var(--sidebar-hover); color: white; }
-        .sidebar .nav-link.active { background-color: var(--primary-color); color: white; font-weight: 500; }
+        .sidebar .logo { font-size: 1.4rem; font-weight: 600; text-align: center; color: white; padding: 20px 10px; border-bottom: 1px solid var(--sidebar-hover-bg); margin-bottom: 20px; }
+        .sidebar .nav-link { color: var(--sidebar-text); padding: 12px 15px; border-radius: 8px; margin-bottom: 5px; transition: all 0.2s ease; white-space: nowrap; cursor: pointer; display: flex; align-items: center;}
+        .sidebar .nav-link:hover { background-color: var(--sidebar-hover-bg); color: var(--sidebar-active-text); }
+        .sidebar .nav-link.active { background-color: var(--primary-color); color: var(--sidebar-active-text); font-weight: 500; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
         .sidebar .nav-link i { margin-right: 15px; width: 20px; text-align: center; }
-        .sidebar .user-profile { margin-top: auto; border-top: 1px solid var(--sidebar-hover); padding-top: 15px; text-align: center; }
+        .sidebar .user-profile { margin-top: auto; border-top: 1px solid var(--sidebar-hover-bg); padding: 15px 10px; text-align: center; }
         
         .main-content { 
             width: 100%;
             padding: 25px; 
-            margin-left: 280px;
+            margin-left: 260px;
             transition: margin-left 0.3s ease-in-out;
         }
         
+        /* Collapsed Sidebar Styles */
+        .sidebar.collapsed { width: 80px; }
+        .sidebar.collapsed .logo span, .sidebar.collapsed .nav-link span, .sidebar.collapsed .user-profile div { display: none; }
+        .sidebar.collapsed .logo i { margin: 0; }
+        .sidebar.collapsed .nav-link i { margin: 0; }
+        body.sidebar-collapsed .main-content { margin-left: 80px; }
+
         .top-header { display: flex; justify-content: space-between; align-items: center; background: var(--card-bg); padding: 15px 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); margin-bottom: 25px; }
-        .mobile-menu-btn { display: none; }
+        .sidebar-toggle-btn { background: none; border: none; font-size: 1.2rem; color: var(--text-dark); }
 
         .stat-card { border: none; border-radius: 12px; color: white; padding: 25px; box-shadow: 0 5px 25px rgba(0,0,0,0.1); transition: transform 0.2s ease; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
         .stat-card:hover { transform: translateY(-5px); }
@@ -95,23 +102,25 @@
         .stat-card i.stat-icon { font-size: 3.5rem; opacity: 0.2; }
         
         .kpi-card { background: var(--card-bg); border-radius: 12px; padding: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); display: flex; align-items: center; }
-        .kpi-card .kpi-icon { font-size: 2.5rem; padding: 15px; border-radius: 50%; margin-right: 15px; color: #fff; }
+        .kpi-card .kpi-icon { font-size: 2rem; padding: 15px; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; border-radius: 50%; margin-right: 15px; color: #fff; }
         .kpi-card .kpi-info h6 { color: var(--text-muted); margin-bottom: 0px; text-transform: uppercase; font-size: 0.8rem;}
         .kpi-card .kpi-info p { font-size: 1.8rem; font-weight: 700; margin-bottom: 0; line-height: 1.2;}
 
         .card { border: none; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); }
-        .card-header { background-color: var(--card-bg); border-bottom: 1px solid #dee2e6; font-weight: 600; }
+        .card-header { background-color: var(--card-bg); border-bottom: 1px solid var(--border-color); font-weight: 600; }
         
         /* Responsive Styles */
         @media (max-width: 992px) {
-            .sidebar { transform: translateX(-100%); }
+            .sidebar { transform: translateX(-100%); width: 280px; } /* Always full width on mobile */
             .sidebar.active { transform: translateX(0); }
             .main-content { margin-left: 0; }
-            .mobile-menu-btn { display: inline-block; }
+            .sidebar-toggle-btn.desktop { display: none; }
             .top-header { flex-wrap: wrap; }
-            #header-title { width: 100%; text-align: center; margin-top: 10px; }
+            #header-title { width: 100%; text-align: center; margin-top: 10px; order: 3; }
         }
-
+        @media (min-width: 993px) {
+            .sidebar-toggle-btn.mobile { display: none; }
+        }
     </style>
 </head>
 <body>
@@ -138,39 +147,44 @@
 
     <div id="app-container" class="wrapper hidden">
         <nav class="sidebar" id="sidebar">
-            <div class="logo"><i class="fas fa-tasks"></i> DEB'S PROCUREMENT </div>
-            <div id="nav-links">
-                <a class="nav-link admin-nav-item" data-view="admin-dashboard-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-tachometer-alt"></i> Dashboard</a>
-                <a class="nav-link admin-nav-item" data-view="admin-pending-reqs-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-inbox"></i> Requisition Approvals</a>
-                <a class="nav-link admin-nav-item" data-view="admin-requirements-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-file-alt"></i> All Requirements</a>
-                <a class="nav-link admin-nav-item" data-view="admin-bidding-history-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-history"></i> Bidding History</a>
-                <a class="nav-link admin-nav-item" data-view="admin-awarded-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-trophy"></i> Awarded Contracts</a>
-                <a class="nav-link admin-nav-item" data-view="admin-reports-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-chart-pie"></i> Reports & Analytics</a>
-                <a class="nav-link admin-nav-item" data-view="admin-pending-users-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-user-check"></i> User Approvals</a>
-                <a class="nav-link admin-nav-item" data-view="admin-user-control-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-users-cog"></i> User Control</a>
+            <div class="logo">
+                <i class="fas fa-tasks"></i> <span>DEB'S PROCUREMENT</span>
+            </div>
+            <div id="nav-links" class="flex-grow-1">
+                <a class="nav-link admin-nav-item" data-view="admin-dashboard-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-tachometer-alt"></i> <span>Dashboard</span></a>
+                <a class="nav-link admin-nav-item" data-view="admin-pending-reqs-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-inbox"></i> <span>Requisition Approvals</span></a>
+                <a class="nav-link admin-nav-item" data-view="admin-requirements-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-file-alt"></i> <span>All Requirements</span></a>
+                <a class="nav-link admin-nav-item" data-view="admin-bidding-history-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-history"></i> <span>Bidding History</span></a>
+                <a class="nav-link admin-nav-item" data-view="admin-awarded-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-trophy"></i> <span>Awarded Contracts</span></a>
+                <a class="nav-link admin-nav-item" data-view="admin-reports-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-chart-pie"></i> <span>Reports & Analytics</span></a>
+                <a class="nav-link admin-nav-item" data-view="admin-pending-users-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-user-check"></i> <span>User Approvals</span></a>
+                <a class="nav-link admin-nav-item" data-view="admin-user-control-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-users-cog"></i> <span>User Control</span></a>
                 
-                <a class="nav-link vendor-nav-item" data-view="vendor-dashboard-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-tachometer-alt"></i> Dashboard</a>
-                <a class="nav-link vendor-nav-item" data-view="vendor-requirements-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-clipboard-list"></i> My Open Requirements</a>
-                <a class="nav-link vendor-nav-item" data-view="vendor-my-bids-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-gavel"></i> My Bidding History</a>
-                <a class="nav-link vendor-nav-item" data-view="vendor-awarded-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-trophy"></i> My Awarded Contracts</a>
+                <a class="nav-link vendor-nav-item" data-view="vendor-dashboard-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-tachometer-alt"></i> <span>Dashboard</span></a>
+                <a class="nav-link vendor-nav-item" data-view="vendor-requirements-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-clipboard-list"></i> <span>My Open Requirements</span></a>
+                <a class="nav-link vendor-nav-item" data-view="vendor-my-bids-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-gavel"></i> <span>My Bidding History</span></a>
+                <a class="nav-link vendor-nav-item" data-view="vendor-awarded-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-trophy"></i> <span>My Awarded Contracts</span></a>
                 
-                <a class="nav-link user-nav-item" data-view="user-create-req-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-edit"></i> Create Requisition</a>
-                <a class="nav-link user-nav-item" data-view="user-status-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-history"></i> My Requisition Status</a>
+                <a class="nav-link user-nav-item" data-view="user-create-req-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-edit"></i> <span>Create Requisition</span></a>
+                <a class="nav-link user-nav-item" data-view="user-status-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-history"></i> <span>My Requisition Status</span></a>
 
-                <a class="nav-link admin-nav-item user-nav-item vendor-nav-item" data-view="messaging-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-comments"></i> Messages</a>
+                <a class="nav-link admin-nav-item user-nav-item vendor-nav-item" data-view="messaging-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-comments"></i> <span>Messages</span></a>
             </div>
             <div class="user-profile">
-                <h6 id="user-name-sidebar"></h6>
-                <small id="user-email-sidebar" class="text-muted"></small>
-                <button onclick="handleLogout()" class="btn btn-sm btn-outline-light w-100 mt-2"><i class="fas fa-sign-out-alt"></i> Logout</button>
+                <div>
+                    <h6 id="user-name-sidebar" class="mb-0"></h6>
+                    <small id="user-email-sidebar" class="text-muted"></small>
+                </div>
+                <button onclick="handleLogout()" class="btn btn-sm btn-outline-danger w-100 mt-2"><i class="fas fa-sign-out-alt"></i> <span>Logout</span></button>
             </div>
         </nav>
 
         <main class="main-content" id="main-content">
             <div class="top-header">
                 <div class="d-flex align-items-center">
-                    <button class="btn btn-outline-secondary mobile-menu-btn me-3" id="sidebar-toggle"><i class="fas fa-bars"></i></button>
-                    <h1 id="header-title" class="h4 mb-0"></h1>
+                    <button class="sidebar-toggle-btn mobile" id="sidebar-toggle-mobile"><i class="fas fa-bars"></i></button>
+                    <button class="sidebar-toggle-btn desktop" id="sidebar-toggle-desktop"><i class="fas fa-bars"></i></button>
+                    <h1 id="header-title" class="h4 mb-0 ms-3"></h1>
                 </div>
                 <button class="btn btn-sm btn-outline-info" onclick="handleManualRefresh()"><i class="fas fa-sync-alt me-2"></i>Refresh Data</button>
             </div>
@@ -188,7 +202,7 @@
     <div class="modal fade" id="addUserModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header bg-success text-white"><h5 class="modal-title">Add New User</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="add-user-form"><div class="mb-3"><label class="form-label">Role</label><select id="add-role" class="form-select" required><option value="">Select role...</option><option value="User">User</option><option value="Vendor">Vendor</option><option value="Admin">Admin</option></select></div><div class="mb-2"><label class="form-label">Full Name</label><input type="text" id="add-fullname" class="form-control" required></div><div class="mb-2"><label class="form-label">Email</label><input type="email" id="add-email" class="form-control" required></div><div class="mb-2"><label class="form-label">Password</label><input type="password" id="add-password" class="form-control" required></div><div class="mb-2"><label class="form-label">Contact Number</label><input type="text" id="add-contact" class="form-control" required></div><div class="mb-2"><label class="form-label">Company Name (for Vendors)</label><input type="text" id="add-company" class="form-control"></div><div class="mb-3"><label class="form-label">GSTIN (Optional)</label><input type="text" id="add-gstin" class="form-control"></div><button type="submit" class="btn btn-success w-100 fw-bold">Create User</button></form></div></div></div></div>
     <div class="modal fade" id="forcePasswordResetModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Set a New Password</h5></div><div class="modal-body"><p class="text-muted">For security, you must set a new password before you can continue.</p><form id="force-password-reset-form"><div class="mb-3"><label class="form-label">New Password</label><input type="password" id="force-new-password" class="form-control" required></div><button type="submit" class="btn btn-primary w-100">Set Password and Login</button></form></div></div></div></div>
     <div class="modal fade" id="assignVendorsModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="assignVendorModalTitle">Assign Vendors</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="assign-vendor-req-id"><div class="form-check form-switch mb-2"><input class="form-check-input" type="checkbox" id="assign-vendor-select-all" onchange="toggleAllInParent(this, 'assign-vendor-checkbox')"><label class="form-check-label" for="assign-vendor-select-all">Select All Vendors</label></div><hr><div id="assign-vendor-checklist" class="border rounded p-3" style="max-height: 250px; overflow-y: auto;"></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button><button type="button" class="btn btn-primary" onclick="handleUpdateVendorAssignments()">Save Changes</button></div></div></div></div>
-
+    
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -242,7 +256,7 @@
                         <button class="btn btn-sm btn-success" onclick="downloadAdminAwardedContractsReport()"><i class="fas fa-download me-2"></i>Download Report</button>
                     </div>
                 </div>
-                <div class="card-body table-responsive"><table class="table table-hover align-middle" id="admin-awarded-table"><thead class="table-light"><tr><th><input type="checkbox" onchange="toggleAllInParent(this, 'awarded-item-checkbox')"></th><th>Req. ID</th><th>Item Name</th><th>Item Code</th><th>Qty & Unit</th><th>Vendor</th><th>Amount (₹)</th><th>Date</th><th>Actions</th></tr></thead><tbody id="admin-awarded-tbody"></tbody></table></div></div>`,
+                <div class="card-body table-responsive"><table class="table table-hover align-middle" id="admin-awarded-table"><thead class="table-light"><tr><th><input type="checkbox" onchange="toggleAllInParent(this, 'awarded-item-checkbox')"></th><th>Req. ID</th><th>Item Name</th><th>Vendor</th><th>Ex-works (₹)</th><th>Freight (₹)</th><th>Total (₹)</th><th>Date</th><th>Actions</th></tr></thead><tbody id="admin-awarded-tbody"></tbody></table></div></div>`,
             'admin-reports-view': `<h4 class="mb-4">Procurement Analytics Dashboard</h4>
                 <div class="card mb-4"><div class="card-body"><div class="row g-3 align-items-center">
                     <div class="col-md-5"><label class="form-label form-label-sm">Start Date</label><input type="date" id="report-start-date" class="form-control form-control-sm"></div>
@@ -251,7 +265,7 @@
                 </div></div></div>
                 <div class="row g-4 mb-4">
                     <div class="col-lg-3 col-md-6"><div class="kpi-card"><div class="kpi-icon bg-primary"><i class="fas fa-wallet"></i></div><div class="kpi-info"><h6 class>Total Spend</h6><p id="report-total-spend">₹0</p></div></div></div>
-                    <div class="col-lg-3 col-md-6"><div class="kpi-card"><div class="kpi-icon bg-success"><i class="fas fa-piggy-bank"></i></div><div class="kpi-info"><h6 class>Cost Savings (L2-L1)</h6><p id="report-cost-savings">₹0</p></div></div></div>
+                    <div class="col-lg-3 col-md-6"><div class="kpi-card"><div class="kpi-icon bg-success"><i class="fas fa-piggy-bank"></i></div><div class="kpi-info"><h6 class>Cost Savings (vs L2)</h6><p id="report-cost-savings">₹0</p></div></div></div>
                     <div class="col-lg-3 col-md-6"><div class="kpi-card"><div class="kpi-icon bg-info"><i class="fas fa-gavel"></i></div><div class="kpi-info"><h6 class>Avg. Bids / Item</h6><p id="report-avg-bids">0</p></div></div></div>
                     <div class="col-lg-3 col-md-6"><div class="kpi-card"><div class="kpi-icon bg-warning"><i class="fas fa-clock"></i></div><div class="kpi-info"><h6 class>Avg. Cycle Time</h6><p id="report-cycle-time">0 Days</p></div></div></div>
                 </div>
@@ -269,7 +283,10 @@
                     <div class="col-md-4"><div class="stat-card bg-success" onclick="navigateTo('vendor-awarded-view')"><div><h5 class="mb-0">Contracts Won</h5><p class="display-4" id="vendor-stats-won">--</p></div><i class="fas fa-trophy stat-icon"></i></div></div>
                 </div>`,
             'vendor-requirements-view': `<div class="card">
-                    <div class="card-header"><h5 class="mb-0">My Open Requirements for Bidding</h5></div>
+                    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <h5 class="mb-0">My Open Requirements for Bidding</h5>
+                        <button class="btn btn-success btn-sm" onclick="handleBulkBidSubmit()"><i class="fas fa-check-double me-2"></i>Submit All Entered Bids</button>
+                    </div>
                     <div class="card-body p-0"><div class="table-responsive"><table class="table table-hover align-middle mb-0" id="vendor-reqs-table">
                         <thead class="table-light"><tr><th>Item Details</th><th>Qty & Unit</th><th>My Bid Status</th><th>My Rank</th></tr></thead>
                         <tbody id="vendor-reqs-tbody"></tbody>
@@ -324,8 +341,13 @@
             $('#edit-user-form').on('submit', handleUserUpdateSubmit);
             $('#bulk-upload-form').on('submit', handleBulkUpload);
             
-            $('#sidebar-toggle').on('click', () => {
-                $('#sidebar').toggleClass('active');
+            $('#sidebar-toggle-desktop, #sidebar-toggle-mobile').on('click', () => {
+                if(window.innerWidth < 992) {
+                    $('#sidebar').toggleClass('active');
+                } else {
+                    $('#sidebar').toggleClass('collapsed');
+                    $('body').toggleClass('sidebar-collapsed');
+                }
             });
             
             $('#togglePassword').on('click', function() {
@@ -374,7 +396,7 @@
             }
         }
 
-        function navigateTo(viewId, fromHistory = false) {
+        function navigateTo(viewId) {
             if (!viewId || !views[viewId]) {
                 console.error("View not found:", viewId);
                 return;
@@ -388,7 +410,7 @@
             const navLink = $(`[data-view="${viewId}"]`);
             if (navLink.length) {
                 navLink.addClass('active');
-                headerTitle.text(navLink.text().trim());
+                headerTitle.text(navLink.find('span').text().trim());
             }
 
             if (window.innerWidth < 992) {
@@ -412,7 +434,7 @@
                     LOCATION_DROPDOWN_DATA = [];
                     await Promise.all([fetchProductList(), fetchLocationDropdownData()]);
                 }
-                navigateTo(viewId, true); 
+                navigateTo(viewId); 
             }
         }
 
@@ -560,10 +582,10 @@
                         <td><input type="checkbox" class="form-check-input awarded-item-checkbox" data-item-id="${contract.item_id}"></td>
                         <td>REQ-${contract.requisition_id}-${contract.item_sl_no}</td>
                         <td>${contract.item_name}</td>
-                        <td>${contract.item_code || '-'}</td>
-                        <td>${contract.quantity} ${contract.unit}</td>
                         <td>${contract.vendor_name}</td>
-                        <td>${formatCurrency(contract.awarded_amount)}</td>
+                        <td>${formatCurrency(contract.ex_works_rate)}</td>
+                        <td>${formatCurrency(contract.freight_rate)}</td>
+                        <td><strong>${formatCurrency(contract.awarded_amount)}</strong></td>
                         <td>${new Date(contract.awarded_date).toLocaleDateString()}</td>
                         <td><div class="btn-group btn-group-sm"><button class="btn btn-info" onclick="openAdminActionModal(${contract.item_id}, '${contract.item_name.replace(/'/g, "\\'")}')">Bids</button><button class="btn btn-danger" onclick="handleSingleReopenBidding(${contract.item_id})">Re-open</button></div></td>
                     </tr>
@@ -608,16 +630,16 @@
                             <td>${isBidded ? `<span class="badge bg-info">L${item.my_rank}</span>` : 'N/A'}</td>
                         </tr>
                     `;
-                    const freightValue = item.freight_required ? (item.my_freight_rate || 0) : 0;
+                    const freightValue = item.freight_required ? (item.my_freight_rate || '') : 0;
                     const freightReadonly = !item.freight_required ? 'readonly' : '';
                     const bidRow = `
                         <tr class="bidding-row">
                             <td colspan="4">
                                 <div class="row g-3 align-items-center">
-                                    <div class="col-md-3"><label class="form-label small">Ex-works Rate/Unit (₹)</label><input type="number" step="0.01" class="form-control form-control-sm ex-works-rate" value="${item.my_ex_works_rate || ''}" oninput="calculateTotalBid(this)" required></div>
-                                    <div class="col-md-3"><label class="form-label small">Freight Rate/Unit (₹)</label><input type="number" step="0.01" class="form-control form-control-sm freight-rate" value="${freightValue}" oninput="calculateTotalBid(this)" ${freightReadonly} required></div>
+                                    <div class="col-md-3"><label class="form-label small">Ex-works Rate/Unit (₹)</label><input type="number" step="0.01" class="form-control form-control-sm ex-works-rate" value="${item.my_ex_works_rate || ''}" oninput="calculateTotalBid(this)"></div>
+                                    <div class="col-md-3"><label class="form-label small">Freight Rate/Unit (₹)</label><input type="number" step="0.01" class="form-control form-control-sm freight-rate" value="${freightValue}" oninput="calculateTotalBid(this)" ${freightReadonly}></div>
                                     <div class="col-md-3"><label class="form-label small">Total Bid Amount (₹)</label><p class="form-control-plaintext fw-bold total-bid-amount">${formatCurrency(item.my_bid_amount) || '₹0.00'}</p></div>
-                                    <div class="col-md-3 d-grid"><button class="btn btn-success" onclick="handleSingleBidSubmit(this)">${isBidded ? 'Update Bid' : 'Submit Bid'}</button></div>
+                                    <div class="col-md-3 d-grid"></div>
                                 </div>
                             </td>
                         </tr>
@@ -771,7 +793,7 @@
         // =========================================================
         // ================ ACTION HANDLERS ========================
         // =========================================================
-        async function approveUser(tempId) { if (!confirm('Approve this user?')) return; const result = await apiCall('/users/approve', 'POST', { temp_id: tempId }); if (result.success) { showToast(result.message, 'success'); load_admin_pending_users_view(); } }
+        async function approveUser(tempId) { if (!confirm('Approve this user?')) return; const result = await apiCall('/users/approve', 'POST', { temp_id: tempId }); if (result.success) { showToast('User Approved!', 'success'); load_admin_pending_users_view(); } }
         async function handleBulkApproval(reqId) { const container = $(`#collapse-${reqId}`); const approvedItemIds = container.find('.item-check-box:checked').map((i, el) => $(el).val()).get(); const vendorAssignments = container.find('.vendor-assign-check:checked').map((i, el) => $(el).val()).get(); if(approvedItemIds.length === 0) { if(!confirm("No items selected. This will mark the requisition as processed without activating any items. Continue?")) return; } const result = await apiCall('/requisitions/approve', 'POST', { approvedItemIds, vendorAssignments, requisitionId: reqId }); if(result.success) { showToast(result.message, 'success'); load_admin_pending_reqs_view(); } }
         
         async function openAdminActionModal(itemId, itemName) {
@@ -835,33 +857,42 @@
             const total = (exWorks + freight) * quantity;
             bidRow.find('.total-bid-amount').text(formatCurrency(total));
         }
+        
+        async function handleBulkBidSubmit() {
+            const bidsToSubmit = [];
+            $('#vendor-reqs-tbody .bidding-row').each(function() {
+                const exWorksInput = $(this).find('.ex-works-rate');
+                const exWorks = parseFloat(exWorksInput.val());
+                
+                if (!isNaN(exWorks) && exWorks > 0) {
+                    const itemRow = $(this).prev('tr');
+                    const item = JSON.parse(itemRow.attr('data-item'));
+                    const quantity = parseFloat(item.quantity);
+                    const freight = parseFloat($(this).find('.freight-rate').val()) || 0;
+                    
+                    bidsToSubmit.push({
+                        item_id: item.item_id,
+                        ex_works_rate: exWorks,
+                        freight_rate: freight,
+                        bid_amount: (exWorks + freight) * quantity,
+                        comments: ''
+                    });
+                }
+            });
 
-        async function handleSingleBidSubmit(button) {
-            const bidRow = $(button).closest('.bidding-row');
-            const itemRow = bidRow.prev('tr');
-            const item = JSON.parse(itemRow.attr('data-item'));
-            const quantity = parseFloat(item.quantity);
-            const exWorks = parseFloat(bidRow.find('.ex-works-rate').val());
-            const freight = parseFloat(bidRow.find('.freight-rate').val());
-
-            if (isNaN(exWorks) || isNaN(freight)) {
-                return showToast('Please enter valid numbers for rates.', 'error');
+            if (bidsToSubmit.length === 0) {
+                return showToast('Please enter a bid for at least one item.', 'info');
             }
 
-            const bid = {
-                item_id: item.item_id,
-                ex_works_rate: exWorks,
-                freight_rate: freight,
-                bid_amount: (exWorks + freight) * quantity,
-                comments: ''
-            };
+            if (!confirm(`You are about to submit ${bidsToSubmit.length} bid(s). Continue?`)) return;
 
-            const result = await apiCall('/bids', 'POST', { bids: [bid] });
+            const result = await apiCall('/bids', 'POST', { bids: bidsToSubmit });
             if(result.success) {
-                showToast('Bid submitted successfully!', 'success');
+                showToast(`${bidsToSubmit.length} bids submitted successfully!`, 'success');
                 load_vendor_requirements_view();
             }
         }
+
 
         function addRequisitionItem() {
             itemCounter++;
@@ -911,11 +942,11 @@
         }
         
         function openEditUserModal(user) { $('#edit-userid').val(user.user_id); $('#edit-fullname').val(user.full_name); $('#edit-email').val(user.email); $('#edit-role').val(user.role); $('#edit-company').val(user.company_name); $('#edit-contact').val(user.contact_number); $('#edit-gstin').val(user.gstin); $('#edit-password').val(''); editUserModal.show(); }
-        async function handleUserUpdateSubmit(e) { e.preventDefault(); const userId = $('#edit-userid').val(); const userData = { full_name: $('#edit-fullname').val(), email: $('#edit-email').val(), role: $('#edit-role').val(), company_name: $('#edit-company').val(), contact_number: $('#edit-contact').val(), gstin: $('#edit-gstin').val(), password: $('#edit-password').val() }; const result = await apiCall(`/users/${userId}`, 'PUT', userData); if(result.success) { showToast(result.message, 'success'); editUserModal.hide(); load_admin_user_control_view(); } }
+        async function handleUserUpdateSubmit(e) { e.preventDefault(); const userId = $('#edit-userid').val(); const userData = { full_name: $('#edit-fullname').val(), email: $('#edit-email').val(), role: $('#edit-role').val(), company_name: $('#edit-company').val(), contact_number: $('#edit-contact').val(), gstin: $('#edit-gstin').val(), password: $('#edit-password').val() }; const result = await apiCall(`/users/${userId}`, 'PUT', userData); if(result.success) { showToast('User updated!', 'success'); editUserModal.hide(); load_admin_user_control_view(); } }
         async function handleSingleReopenBidding(itemId) { openReopenBiddingModal([itemId]); }
         function handleBulkReopenModal() { const itemIdsToReopen = $('.awarded-item-checkbox:checked').map((i, el) => $(el).data('item-id')).get(); if (itemIdsToReopen.length === 0) return showToast('Please select at least one awarded item to re-open.', 'info'); openReopenBiddingModal(itemIdsToReopen); }
         async function openReopenBiddingModal(itemIds) { $('#reopen-item-ids').val(JSON.stringify(itemIds)); $('#reopen-remarks').val(''); const checklistDiv = $('#reopen-vendor-checklist').html('<div class="spinner-border spinner-border-sm"></div>'); reopenBiddingModal.show(); const usersResult = await apiCall('/users/vendors'); const vendors = usersResult.success ? usersResult.data : []; checklistDiv.html(vendors.map(v => `<div class="form-check"><input class="form-check-input reopen-vendor-checkbox" type="checkbox" value="${v.user_id}" checked><label class="form-check-label">${v.full_name}</label></div>`).join('')); }
-        async function submitReopenBidding() { const itemIds = JSON.parse($('#reopen-item-ids').val()); const remarks = $('#reopen-remarks').val().trim(); const vendorIds = $('#reopen-vendor-checklist input:checked').map((i, el) => $(el).val()).get(); if(!remarks) return showToast('Remarks are mandatory.', 'error'); if(vendorIds.length === 0) return showToast('Please select at least one vendor.', 'warning'); const result = await apiCall('/items/reopen-bidding', 'POST', { itemIds, vendorIds, remarks }); if (result.success) { showToast(result.message, 'success'); reopenBiddingModal.hide(); handleManualRefresh(); } }
+        async function submitReopenBidding() { const itemIds = JSON.parse($('#reopen-item-ids').val()); const remarks = $('#reopen-remarks').val().trim(); if(!remarks) return showToast('Remarks are mandatory.', 'error'); const result = await apiCall('/items/reopen-bidding', 'POST', { itemIds, remarks }); if (result.success) { showToast(result.message, 'success'); reopenBiddingModal.hide(); handleManualRefresh(); } }
 
         async function handleAdvancedBulkAward() {
             const itemIds = $('.req-item-checkbox:checked').map((i, el) => $(el).closest('tr').data('item-id')).get();
@@ -962,7 +993,7 @@
         async function handleSendMessage(recipientId) { const input = $('#message-input'); const messageBody = input.val().trim(); if(!messageBody) return; const tempId = Date.now(); const messagesDiv = $('#chat-messages'); messagesDiv.append(`<div class="message-bubble sent" id="msg-${tempId}">${messageBody.replace(/\n/g, '<br>')}<small>Sending...</small></div>`); messagesDiv.scrollTop(messagesDiv[0].scrollHeight); input.val(''); const result = await apiCall('/messages', 'POST', { recipientId, messageBody }); if(result.success) { $(`#msg-${tempId} small`).text(new Date().toLocaleString()); } else { $(`#msg-${tempId} small`).text('Failed to send').css('color', 'yellow'); showToast('Failed to send message', 'error'); } }
         
         function openAddUserModal() { $('#add-user-form')[0].reset(); addUserModal.show(); }
-        async function handleAddUserSubmit(e) { e.preventDefault(); const data = { full_name: $('#add-fullname').val(), email: $('#add-email').val(), password: $('#add-password').val(), role: $('#add-role').val(), company_name: $('#add-company').val(), contact_number: $('#add-contact').val(), gstin: $('#add-gstin').val() }; const result = await apiCall('/users/add', 'POST', data); if (result.success) { showToast(result.message, 'success'); addUserModal.hide(); load_admin_user_control_view(); } }
+        async function handleAddUserSubmit(e) { e.preventDefault(); const data = { full_name: $('#add-fullname').val(), email: $('#add-email').val(), password: $('#add-password').val(), role: $('#add-role').val(), company_name: $('#add-company').val(), contact_number: $('#add-contact').val(), gstin: $('#add-gstin').val() }; const result = await apiCall('/users/add', 'POST', data); if (result.success) { showToast('User created!', 'success'); addUserModal.hide(); load_admin_user_control_view(); } }
         async function handleForcePasswordResetSubmit(e) { e.preventDefault(); const newPassword = $('#force-new-password').val(); const result = await apiCall('/users/set-password', 'POST', { newPassword }); if (result.success) { showToast(result.message, 'success'); forcePasswordResetModal.hide(); const user = JSON.parse(sessionStorage.getItem('loggedInUser')); await setupUIForRole(user); } }
 
         async function openAssignVendorsModal(requisitionId) {
@@ -1001,10 +1032,10 @@
         // =========================================================
         async function fetchProductList(){if(PRODUCT_LIST.length>0)return;try{const r=await fetch(PRODUCT_DATA_URL);if(!r.ok) throw new Error('Network response not ok');PRODUCT_LIST=await r.json()}catch(e){showToast('Could not load product master data. Please refresh.','error'); console.error(e); $('#requisition-items-container').html(`<div class="alert alert-danger">Failed to load product list. Please try refreshing the page.</div>`)}}
         async function fetchLocationDropdownData(){if(LOCATION_DROPDOWN_DATA.length>0)return;const r=await apiCall('/dropdowns/locations');if(r.success)LOCATION_DROPDOWN_DATA=r.data}
-        function showToast(m,t='info'){const c=$('#toast-container'),e=$('<div>').addClass(`toast-notification ${t}`).text(m);c.append(e);setTimeout(()=>e.remove(),5000)}
+        function showToast(m,t='info'){const icon={'success':'fa-check-circle','error':'fa-times-circle','info':'fa-info-circle'}[t]||'fa-info-circle';const c=$('#toast-container'),e=$(`<div><i class="fas ${icon}"></i><span>${m}</span></div>`).addClass(`toast-notification ${t}`);c.append(e);setTimeout(()=>e.remove(),5000)}
         function showLoader(){$('#loader-overlay').removeClass('hidden')}
         function hideLoader(){$('#loader-overlay').addClass('hidden')}
-        function toggleAllInParent(source, targetClass) { $(source).closest('table, .modal-body, .accordion-body, .card-body, .mb-3').find(`input[type="checkbox"].${targetClass}`).not(':disabled').prop('checked', source.checked); }
+        function toggleAllInParent(source, targetClass) { $(source).closest('table, .modal-body, .accordion-body, .card, .mb-3').find(`input[type="checkbox"].${targetClass}`).not(':disabled').prop('checked', source.checked); }
         function formatCurrency(v){const n=parseFloat(v);return isNaN(n)?'-':`₹${n.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}`}
         function getBadgeColor(s){return {'Awarded':'primary','Active':'success','Pending Approval':'warning','Submitted':'info','Rejected':'danger','Processed': 'secondary', 'Bidding Closed': 'dark'}[s]||'dark'}
         function createImageLinks(item) {
@@ -1028,7 +1059,7 @@
             if(vendorSpendChart) vendorSpendChart.destroy();
             vendorSpendChart = new Chart($('#vendorSpendChart'), { type: 'bar', data: { labels: spendByVendor.labels, datasets: [{ label: 'Total Spend (₹)', data: spendByVendor.data, backgroundColor: '#0d6efd' }] }, options: { scales: { y: { beginAtZero: true } }, responsive: true, maintainAspectRatio: false } });
             if(itemStatusChart) itemStatusChart.destroy();
-            itemStatusChart = new Chart($('#itemStatusChart'), { type: 'doughnut', data: { labels: itemStatusCounts.labels, datasets: [{ data: itemStatusCounts.data, backgroundColor: ['#198754', '#ffc107', '#0d6efd', '#6c757d', '#dc3545', '#0dcaf0'], }] }, options: { responsive: true, maintainAspectRatio: true } });
+            itemStatusChart = new Chart($('#itemStatusChart'), { type: 'doughnut', data: { labels: itemStatusCounts.labels, datasets: [{ data: itemStatusCounts.data, backgroundColor: ['#198754', '#ffc107', '#0d6efd', '#6c757d', '#dc3545', '#0dcaf0'], }] }, options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'right' } } } });
         }
         
         async function sendConsolidatedAwardEmails(winningBids) {
@@ -1124,7 +1155,22 @@
         }
 
         async function downloadBiddingHistoryReport() { const result = await apiCall('/admin/bidding-history'); if(result.success) { const formattedData = result.data.map(d => ({ 'Req ID': `REQ-${d.requisition_id}-${d.item_sl_no}`, 'Item Name': d.item_name, 'Vendor Name': d.vendor_name, 'Bid Amount': d.bid_amount, 'Ex-works Rate': d.ex_works_rate, 'Freight Rate': d.freight_rate, 'Status': d.bid_status, 'Date': new Date(d.submitted_at).toLocaleString() })); exportToExcel(formattedData, 'Bidding_History_Report.xlsx'); }}
-        async function downloadAdminAwardedContractsReport() { const result = await apiCall('/admin/awarded-contracts'); if(result.success) { const dataToExport = result.data.map(c => ({ 'Req ID': `REQ-${c.requisition_id}-${c.item_sl_no}`, 'Item Name': c.item_name, 'Item Code': c.item_code, 'Quantity': c.quantity, 'Unit': c.unit, 'Vendor Name': c.vendor_name, 'Awarded Amount': c.awarded_amount, 'Awarded Date': new Date(c.awarded_date).toLocaleDateString(), 'Remarks': c.remarks })); exportToExcel(dataToExport, 'Awarded_Contracts_Report.xlsx'); } }
+        async function downloadAdminAwardedContractsReport() { 
+            const result = await apiCall('/admin/awarded-contracts'); 
+            if(result.success) { 
+                const dataToExport = result.data.map(c => ({ 
+                    'Req ID': `REQ-${c.requisition_id}-${c.item_sl_no}`, 
+                    'Item Name': c.item_name, 
+                    'Vendor Name': c.vendor_name, 
+                    'Ex-works Rate': c.ex_works_rate,
+                    'Freight Rate': c.freight_rate,
+                    'Awarded Amount': c.awarded_amount, 
+                    'Awarded Date': new Date(c.awarded_date).toLocaleDateString(), 
+                    'Remarks': c.remarks 
+                })); 
+                exportToExcel(dataToExport, 'Awarded_Contracts_Report.xlsx'); 
+            } 
+        }
         
         async function downloadMyBidsReport() {
             const result = await apiCall('/vendor/my-bids');
