@@ -471,6 +471,11 @@
             if (currentViewLink.length > 0) {
                 showToast('Refreshing data...', 'info');
                 const viewId = currentViewLink.data('view');
+                // BUG FIX: Prevent re-fetching master data on every manual refresh
+                if (viewId === 'user-create-req-view') {
+                    PRODUCT_LIST = []; 
+                    LOCATION_DROPDOWN_DATA = [];
+                }
                 navigateTo(viewId); 
             }
         }
@@ -737,9 +742,9 @@
             itemCounter = 0;
             
             // BUG FIX: Prevent re-fetching product list if it's already loaded.
-            if (PRODUCT_LIST.length === 0) { 
-                $('#requisition-items-container').html(`<div class="text-center p-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">Fetching product master data...</p></div>`);
-                await Promise.all([fetchProductList(), fetchLocationDropdownData()]);
+            if (PRODUCT_LIST.length === 0 || LOCATION_DROPDOWN_DATA.length === 0) { 
+                $('#requisition-items-container').html(`<div class="text-center p-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">Fetching master data...</p></div>`);
+                await fetchMasterData();
                 $('#requisition-items-container').html('');
             }
             
@@ -866,6 +871,7 @@
             adminActionModal.show();
             const result = await apiCall(`/items/${itemId}/bids`);
             if(result.success) {
+                const itemDetails = result.data.itemDetails;
                 $('#bids-tbody').html(result.data.bids.map((bid, i) => {
                     const bidDataForAward = {
                         bid_id: bid.bid_id, 
@@ -876,6 +882,13 @@
                         vendor_email: bid.vendor_email,
                         ex_works_rate: bid.ex_works_rate,
                         freight_rate: bid.freight_rate,
+                        // Add item details to each bid for the award function
+                        item_name: itemDetails.item_name,
+                        item_code: itemDetails.item_code,
+                        quantity: itemDetails.quantity,
+                        unit: itemDetails.unit,
+                        requisition_id: itemDetails.requisition_id,
+                        item_sl_no: itemDetails.item_sl_no
                     };
                     return `
                     <tr data-bid='${JSON.stringify(bidDataForAward)}'>
@@ -1097,7 +1110,7 @@
         // =========================================================
         // ================ HELPER & REPORTING =====================
         // =========================================================
-        async function fetchProductList(){if(PRODUCT_LIST.length>0 && LOCATION_DROPDOWN_DATA.length > 0)return;try{const[productsResponse,locationsResponse]=await Promise.all([fetch(PRODUCT_DATA_URL),apiCall('/dropdowns/locations', 'GET', null, false, false)]);if(!productsResponse.ok)throw new Error('Network response for products not ok');PRODUCT_LIST=await productsResponse.json();if(locationsResponse.success)LOCATION_DROPDOWN_DATA=locationsResponse.data}catch(e){showToast('Could not load master data. Please refresh.','error');console.error(e);$('#requisition-items-container').html(`<div class="alert alert-danger">Failed to load master data. Please try refreshing the page.</div>`)}}
+        async function fetchMasterData(){if(PRODUCT_LIST.length>0&&LOCATION_DROPDOWN_DATA.length>0)return;try{const[productsResponse,locationsResponse]=await Promise.all([fetch(PRODUCT_DATA_URL),apiCall('/dropdowns/locations','GET',null,false,false)]);if(!productsResponse.ok)throw new Error('Network response for products not ok');PRODUCT_LIST=await productsResponse.json();if(locationsResponse.success)LOCATION_DROPDOWN_DATA=locationsResponse.data}catch(e){showToast('Could not load master data. Please refresh.','error');console.error(e);$('#requisition-items-container').html(`<div class="alert alert-danger">Failed to load master data. Please try refreshing the page.</div>`)}}
         function showToast(m,t='info'){const c=$('#toast-container'),e=$(`<div><i class="fas ${t === 'success' ? 'fa-check-circle' : 'fa-times-circle'} me-2"></i><span>${m}</span></div>`).addClass(`toast-notification ${t}`);c.append(e);setTimeout(()=>e.remove(),5000)}
         function showLoader(){$('#loader-overlay').removeClass('hidden')}
         function hideLoader(){$('#loader-overlay').addClass('hidden')}
