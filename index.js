@@ -39,7 +39,7 @@ const dbPool = mysql.createPool({
     dateStrings: true,
     // Add SSL configuration for services like Aiven
     ssl: {
-        rejectUnauthorized: true
+        ca: fs.readFileSync(path.join(__dirname, 'ca.pem'))
     }
 });
 
@@ -976,3 +976,4 @@ app.use((err, req, res, next) => {
 // ================== SERVER START ==================
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server is running on http://localhost:${PORT}`));
+
