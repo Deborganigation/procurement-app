@@ -20,13 +20,12 @@ if (process.env.SENDGRID_API_KEY) {
     sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 }
 
-// ===== FIX: Serve index.html for the root URL ('Cannot GET /' error) =====
+// ===== Serve index.html for the root URL ('Cannot GET /' error) =====
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 // ================== DATABASE POOL ==================
-// ===== FIX for ECONNRESET =====: Added connectTimeout for more resilience with free databases
 const dbPool = mysql.createPool({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
@@ -36,8 +35,12 @@ const dbPool = mysql.createPool({
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
-    connectTimeout: 20000, // 20 seconds timeout
-    dateStrings: true
+    connectTimeout: 20000,
+    dateStrings: true,
+    // Add SSL configuration for services like Aiven
+    ssl: {
+        rejectUnauthorized: true
+    }
 });
 
 // ================== FILE STORAGE ==================
@@ -119,8 +122,9 @@ app.get('/api/dropdowns/locations', authenticateToken, (req, res) => {
 
 const anyUpload = upload.any();
 app.post('/api/requisitions', authenticateToken, anyUpload, async (req, res, next) => {
-    const connection = await dbPool.getConnection();
+    let connection;
     try {
+        connection = await dbPool.getConnection();
         const { vendorIds, items } = req.body;
         if (!items) return res.status(400).json({ success: false, message: 'No items provided in the requisition.' });
 
@@ -142,15 +146,15 @@ app.post('/api/requisitions', authenticateToken, anyUpload, async (req, res, nex
         }
 
         if (parsedVendorIds && parsedVendorIds.length > 0) {
-            for (const vId of parsedVendorIds) await connection.query('INSERT INTO requisition_assignments (requisition_id, vendor_id) VALUES (?, ?)', [reqId, vId]);
+            for (const vId of parsedVendorIds) await connection.query('INSERT INTO requisition_assignments (requisition_id, vendor_id, assigned_at) VALUES (?, ?, NOW())', [reqId, vId]);
         }
         await connection.commit();
         res.status(201).json({ success: true, message: 'Requisition submitted successfully!' });
     } catch (error) {
-        await connection.rollback();
+        if(connection) await connection.rollback();
         next(error);
     } finally {
-        connection.release();
+        if(connection) connection.release();
     }
 });
 
@@ -204,9 +208,11 @@ app.get('/api/requirements/assigned', authenticateToken, async (req, res, next) 
 app.post('/api/bids', authenticateToken, async (req, res, next) => {
     if (req.user.role !== 'Vendor') return res.status(403).json({ success: false, message: 'Forbidden' });
     
-    const { bids } = req.body;
-    const connection = await dbPool.getConnection();
+    let connection;
     try {
+        connection = await dbPool.getConnection();
+        const { bids } = req.body;
+        
         await connection.beginTransaction();
         for (const bid of bids) {
             const [[countResult]] = await connection.query('SELECT COUNT(*) as count FROM bidding_history_log WHERE item_id = ? AND vendor_id = ?', [bid.item_id, req.user.userId]);
@@ -223,10 +229,10 @@ app.post('/api/bids', authenticateToken, async (req, res, next) => {
         await connection.commit();
         res.json({ success: true, message: 'Bids submitted successfully!' });
     } catch (error) {
-        await connection.rollback();
+        if(connection) await connection.rollback();
         next(error);
     } finally {
-        connection.release();
+        if(connection) connection.release();
     }
 });
 
@@ -381,9 +387,11 @@ app.get('/api/requirements/pending', authenticateToken, isAdmin, async (req, res
 });
 
 app.post('/api/requisitions/approve', authenticateToken, isAdmin, async (req, res, next) => {
-    const { approvedItemIds, vendorAssignments, requisitionId } = req.body;
-    const connection = await dbPool.getConnection();
+    let connection;
     try {
+        connection = await dbPool.getConnection();
+        const { approvedItemIds, vendorAssignments, requisitionId } = req.body;
+        
         await connection.beginTransaction();
         if (approvedItemIds && approvedItemIds.length > 0) {
             await connection.query('UPDATE requisition_items SET status = "Active" WHERE item_id IN (?)', [approvedItemIds]);
@@ -400,10 +408,10 @@ app.post('/api/requisitions/approve', authenticateToken, isAdmin, async (req, re
         await connection.commit();
         res.json({ success: true, message: 'Requisition items processed!' });
     } catch(error) {
-        await connection.rollback();
+        if(connection) await connection.rollback();
         next(error);
     } finally {
-        connection.release();
+        if(connection) connection.release();
     }
 });
 
@@ -431,8 +439,8 @@ app.get('/api/requirements/active', authenticateToken, isAdmin, async (req, res,
 app.get('/api/items/:id/bids', authenticateToken, isAdmin, async (req, res, next) => {
     try {
         const [bids] = await dbPool.query(`SELECT b.*, u.full_name as vendor_name, u.email as vendor_email FROM bids b JOIN users u ON b.vendor_id = u.user_id WHERE b.item_id = ? ORDER BY b.bid_amount ASC`, [req.params.id]);
-        const [[itemDetails]] = await dbPool.query('SELECT requisition_id, item_sl_no FROM requisition_items WHERE item_id = ?', [req.params.id]);
-        res.json({ success: true, data: { bids, ...itemDetails } });
+        const [[itemDetails]] = await dbPool.query('SELECT * FROM requisition_items WHERE item_id = ?', [req.params.id]);
+        res.json({ success: true, data: { bids, itemDetails } });
     } catch (error) {
         next(error);
     }
@@ -459,49 +467,55 @@ app.post('/api/admin/bids-for-items', authenticateToken, isAdmin, async (req, re
 
 app.post('/api/contracts/award', authenticateToken, isAdmin, async (req, res, next) => {
     const { bids } = req.body;
-    const connection = await dbPool.getConnection();
+    let connection;
     try {
+        connection = await dbPool.getConnection();
         await connection.beginTransaction();
+        
         for (const bid of bids) {
-            await connection.query('UPDATE requisition_items SET status = ? WHERE item_id = ?', ['Awarded', bid.item_id]);
-            await connection.query('UPDATE bids SET bid_status = ? WHERE bid_id = ?', ['Awarded', bid.bid_id]);
-            await connection.query('UPDATE bids SET bid_status = ? WHERE item_id = ? AND bid_id != ?', ['Rejected', bid.item_id, bid.bid_id]);
+            // BUG FIX: Fetch full item details before inserting to awarded_contracts
+            const [[itemDetails]] = await connection.query('SELECT * FROM requisition_items WHERE item_id = ?', [bid.item_id]);
+            if (!itemDetails) {
+                throw new Error(`Item with ID ${bid.item_id} not found.`);
+            }
+
+            await connection.query('UPDATE requisition_items SET status = "Awarded" WHERE item_id = ?', [bid.item_id]);
+            await connection.query('UPDATE bids SET bid_status = "Awarded" WHERE bid_id = ?', [bid.bid_id]);
+            await connection.query('UPDATE bids SET bid_status = "Rejected" WHERE item_id = ? AND bid_id != ?', [bid.item_id, bid.bid_id]);
             
             await connection.query('DELETE FROM awarded_contracts WHERE item_id = ?', [bid.item_id]);
             
-            await connection.query(
-                'INSERT INTO awarded_contracts (item_id, requisition_id, vendor_id, awarded_amount, remarks, awarded_date) VALUES (?, ?, ?, ?, ?, NOW())', 
-                [bid.item_id, bid.requisition_id, bid.vendor_id, bid.bid_amount, bid.remarks]
-            );
+            const insertQuery = `
+                INSERT INTO awarded_contracts 
+                (item_id, requisition_id, item_name, item_code, quantity, unit, vendor_id, vendor_name, awarded_amount, ex_works_rate, freight_rate, winning_bid_id, remarks, awarded_date) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`;
+            
+            await connection.query(insertQuery, [
+                bid.item_id, itemDetails.requisition_id, itemDetails.item_name, itemDetails.item_code, 
+                itemDetails.quantity, itemDetails.unit, bid.vendor_id, bid.vendor_name, 
+                bid.bid_amount, bid.ex_works_rate, bid.freight_rate, bid.bid_id, bid.remarks
+            ]);
         }
+        
         await connection.commit();
         res.json({ success: true, message: 'Contracts awarded successfully!' });
     } catch (error) {
-        await connection.rollback();
+        if (connection) await connection.rollback();
         next(error);
     } finally {
-        connection.release();
+        if (connection) connection.release();
     }
 });
 
 app.get('/api/admin/awarded-contracts', authenticateToken, isAdmin, async (req, res, next) => {
     try {
+        // BUG FIX: The original query was complex and sometimes failed. Simplified for clarity and correctness.
         const query = `
             SELECT 
                 ac.*, 
-                ri.item_name, 
-                ri.item_code, 
-                ri.quantity, 
-                ri.unit, 
-                ri.item_sl_no, 
-                u.full_name as vendor_name,
-                b.ex_works_rate,
-                b.freight_rate
+                u.full_name as vendor_name
             FROM awarded_contracts ac
-            JOIN requisition_items ri ON ac.item_id = ri.item_id
             JOIN users u ON ac.vendor_id = u.user_id
-            LEFT JOIN bids b ON ac.item_id = b.item_id AND ac.vendor_id = b.vendor_id AND b.bid_status = 'Awarded'
-            WHERE ri.status = 'Awarded'
             ORDER BY ac.awarded_date DESC`;
         const [contracts] = await dbPool.query(query);
         res.json({ success: true, data: contracts });
@@ -549,8 +563,7 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
             WHERE ${dateFilter}
             GROUP BY u.full_name ORDER BY total DESC LIMIT 5`;
         
-        // FIX: Specify which table's item_code to use (ri.item_code) to resolve ambiguity.
-        const categorySpendQuery = `SELECT ri.item_code, SUM(ac.awarded_amount) as total FROM awarded_contracts ac JOIN requisition_items ri ON ac.item_id = ri.item_id WHERE ${dateFilter} GROUP BY ri.item_code ORDER BY total DESC LIMIT 5`;
+        const categorySpendQuery = `SELECT item_code, SUM(awarded_amount) as total FROM awarded_contracts ac WHERE ${dateFilter} GROUP BY item_code ORDER BY total DESC LIMIT 5`;
         
         const savingsTrendQuery = `
             SELECT DATE_FORMAT(ac.awarded_date, '%Y-%m') as month, SUM(l2_bids.bid_amount - ac.awarded_amount) as savings
@@ -564,7 +577,7 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
             ${(startDate && endDate) ? `WHERE ac.awarded_date BETWEEN ? AND ?` : ''}
             GROUP BY month ORDER BY month ASC`;
 
-        const detailedReportQuery = `SELECT ac.*, ri.item_name, ri.item_sl_no, u.full_name as vendor_name FROM awarded_contracts ac JOIN requisition_items ri ON ac.item_id = ri.item_id JOIN users u ON ac.vendor_id = u.user_id WHERE ${dateFilter} ORDER BY ac.awarded_date DESC`;
+        const detailedReportQuery = `SELECT ac.* FROM awarded_contracts ac WHERE ${dateFilter} ORDER BY ac.awarded_date DESC`;
 
         const [
             [[kpis]], [[savings]], [topVendors], [categorySpend], [savingsTrend], [detailedReport]
@@ -607,22 +620,25 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
     }
 });
 
+// BUG FIX: Corrected query to update status from 'Awarded' to 'Active'
 app.post('/api/items/reopen-bidding', authenticateToken, isAdmin, async (req, res, next) => {
-    const { itemIds } = req.body;
-    const connection = await dbPool.getConnection();
+    let connection;
     try {
+        connection = await dbPool.getConnection();
+        const { itemIds } = req.body;
+        
         await connection.beginTransaction();
         await connection.query('DELETE FROM awarded_contracts WHERE item_id IN (?)', [itemIds]);
-        await connection.query('UPDATE requisition_items SET status = "Active" WHERE item_id IN (?)', [itemIds]);
-        await connection.query('UPDATE bids SET bid_status = "Submitted" WHERE item_id IN (?)', [itemIds]);
+        await connection.query(`UPDATE requisition_items SET status = 'Active' WHERE item_id IN (?)`, [itemIds]);
+        await connection.query(`UPDATE bids SET bid_status = 'Submitted' WHERE item_id IN (?)`, [itemIds]);
 
         await connection.commit();
         res.json({ success: true, message: 'Bidding re-opened successfully.' });
     } catch(error) {
-        await connection.rollback();
+        if(connection) await connection.rollback();
         next(error);
     } finally {
-        connection.release();
+        if(connection) connection.release();
     }
 });
 
@@ -637,8 +653,9 @@ app.post('/api/requisitions/bulk-upload', authenticateToken, isAdmin, excelUploa
         return res.status(400).json({ success: false, message: 'Invalid vendor data.' });
     }
 
-    const connection = await dbPool.getConnection();
+    let connection;
     try {
+        connection = await dbPool.getConnection();
         const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
         const items = xlsx.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
         if (items.length === 0) return res.status(400).json({ success: false, message: 'Excel file is empty or invalid.' });
@@ -649,7 +666,7 @@ app.post('/api/requisitions/bulk-upload', authenticateToken, isAdmin, excelUploa
 
         for (const [i, item] of items.entries()) {
             await connection.query(
-                'INSERT INTO requisition_items (requisition_id, item_sl_no, item_name, item_code, description, quantity, unit, freight_required, delivery_location, status, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())',
+                'INSERT INTO requisition_items (requisition_id, item_sl_no, item_name, item_code, description, quantity, unit, freight_required, delivery_location, status, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())',
                 [reqId, i + 1, item.ItemName, item.ItemCode, item.Description, item.Quantity, item.Unit, (String(item.FreightRequired).toLowerCase() === 'yes'), item.DeliveryLocation, 'Pending Approval', req.user.userId]
             );
         }
@@ -661,10 +678,10 @@ app.post('/api/requisitions/bulk-upload', authenticateToken, isAdmin, excelUploa
         res.status(201).json({ success: true, message: `${items.length} items uploaded and submitted successfully!` });
 
     } catch (error) {
-        await connection.rollback();
+        if(connection) await connection.rollback();
         next(error);
     } finally {
-        connection.release();
+        if(connection) connection.release();
     }
 });
 
@@ -696,8 +713,9 @@ app.get('/api/requisitions/:id/assignments', authenticateToken, isAdmin, async (
 });
 
 app.put('/api/requisitions/:id/assignments', authenticateToken, isAdmin, async (req, res, next) => {
-    const connection = await dbPool.getConnection();
+    let connection;
     try {
+        connection = await dbPool.getConnection();
         const { id } = req.params;
         const { vendorIds } = req.body;
         
@@ -710,10 +728,10 @@ app.put('/api/requisitions/:id/assignments', authenticateToken, isAdmin, async (
         await connection.commit();
         res.json({ success: true, message: 'Vendor assignments updated successfully.' });
     } catch (error) {
-        await connection.rollback();
+        if(connection) await connection.rollback();
         next(error);
     } finally {
-        connection.release();
+        if(connection) connection.release();
     }
 });
 
@@ -846,36 +864,34 @@ app.get('/api/users/chattable', authenticateToken, async (req, res, next) => {
     }
 });
 
+// BUG FIX: Corrected query for ONLY_FULL_GROUP_BY SQL mode
 app.get('/api/conversations', authenticateToken, async (req, res, next) => {
     try {
         const myId = req.user.userId;
         const query = `
             SELECT
-                u.user_id,
+                u.user_id as other_user_id,
                 u.full_name,
                 u.role,
-                LastMessages.last_message_body as lastMessage,
-                LastMessages.last_timestamp as lastMessageTimestamp,
-                IFNULL(UnreadCounts.unread_count, 0) as unreadCount
-            FROM users u
-            INNER JOIN (
-                SELECT
-                    CASE WHEN sender_id = ? THEN recipient_id ELSE sender_id END as other_user_id,
-                    MAX(timestamp) as last_timestamp,
-                    (SELECT message_body FROM messages m2 
-                     WHERE (m2.sender_id = m.sender_id AND m2.recipient_id = m.recipient_id) OR (m2.sender_id = m.recipient_id AND m2.recipient_id = m.sender_id) 
-                     ORDER BY m2.timestamp DESC LIMIT 1) as last_message_body
-                FROM messages m
-                WHERE sender_id = ? OR recipient_id = ?
-                GROUP BY other_user_id
-            ) as LastMessages ON u.user_id = LastMessages.other_user_id
-            LEFT JOIN (
-                SELECT sender_id, COUNT(*) as unread_count
-                FROM messages
-                WHERE recipient_id = ? AND is_read = 0
-                GROUP BY sender_id
-            ) as UnreadCounts ON u.user_id = UnreadCounts.sender_id
-            ORDER BY LastMessages.last_timestamp DESC
+                m.message_body as lastMessage,
+                m.timestamp as lastMessageTimestamp,
+                (SELECT COUNT(*) FROM messages WHERE recipient_id = ? AND sender_id = u.user_id AND is_read = 0) as unreadCount
+            FROM
+                messages m
+            JOIN
+                users u ON u.user_id = CASE WHEN m.sender_id = ? THEN m.recipient_id ELSE m.sender_id END
+            WHERE
+                (m.sender_id = ? OR m.recipient_id = ?)
+                AND m.timestamp = (
+                    SELECT MAX(timestamp)
+                    FROM messages
+                    WHERE (sender_id = m.sender_id AND recipient_id = m.recipient_id)
+                       OR (sender_id = m.recipient_id AND recipient_id = m.sender_id)
+                )
+            GROUP BY
+                other_user_id, u.full_name, u.role, lastMessage, lastMessageTimestamp
+            ORDER BY
+                lastMessageTimestamp DESC
         `;
         const [conversations] = await dbPool.query(query, [myId, myId, myId, myId]);
         res.json({ success: true, data: conversations });
@@ -885,8 +901,9 @@ app.get('/api/conversations', authenticateToken, async (req, res, next) => {
 });
 
 app.get('/api/messages/:otherUserId', authenticateToken, async (req, res, next) => {
-    const connection = await dbPool.getConnection();
+    let connection;
     try {
+        connection = await dbPool.getConnection();
         const { otherUserId } = req.params;
         const myId = req.user.userId;
 
@@ -905,10 +922,10 @@ app.get('/api/messages/:otherUserId', authenticateToken, async (req, res, next) 
         await connection.commit();
         res.json({ success: true, data: messages });
     } catch(error) {
-        await connection.rollback();
+        if(connection) await connection.rollback();
         next(error);
     } finally {
-        connection.release();
+        if(connection) connection.release();
     }
 });
 
@@ -917,7 +934,6 @@ app.post('/api/send-email', authenticateToken, async (req, res, next) => {
     if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_API_KEY.startsWith('SG.')) {
         console.error("====== INVALID SENDGRID CONFIGURATION ======");
         console.error("CRITICAL: SENDGRID_API_KEY is missing from .env or does not start with 'SG.'. Email sending is disabled.");
-        // We don't want to stop the flow, so we just return a success message.
         return res.json({ success: true, message: 'Email service not configured, but proceeding.' });
     }
 
@@ -939,7 +955,6 @@ app.post('/api/send-email', authenticateToken, async (req, res, next) => {
             console.error("SendGrid Response Body:", error.response.body);
         }
         console.error("==========================");
-        // Do not use next(error) here to avoid crashing on email failure.
         res.status(500).json({ success: false, message: 'Failed to send email.' });
     }
 });
