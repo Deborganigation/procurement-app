@@ -9,16 +9,25 @@ const path = require('path');
 const xlsx = require('xlsx');
 const fs = require('fs');
 const sgMail = require('@sendgrid/mail');
+const { v2: cloudinary } = require('cloudinary'); // Cloudinary package
+const { CloudinaryStorage } = require('multer-storage-cloudinary'); // Cloudinary storage for Multer
 require('dotenv').config();
 
 // ================== INITIALIZATION ==================
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// app.use('/uploads', express.static(path.join(__dirname, 'uploads'))); // Iski ab zaroorat nahi hai
 if (process.env.SENDGRID_API_KEY) {
     sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 }
+
+// ===== CLOUDINARY CONFIGURATION =====
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET
+});
 
 // ===== Serve index.html for the root URL ('Cannot GET /' error) =====
 app.get('/', (req, res) => {
@@ -42,17 +51,19 @@ const dbPool = mysql.createPool({
     }
 });
 
-// ================== FILE STORAGE ==================
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        const dir = 'uploads/';
-        if (!fs.existsSync(dir)){ fs.mkdirSync(dir, { recursive: true }); }
-        cb(null, dir);
+// ================== FILE STORAGE (NOW WITH CLOUDINARY) ==================
+const storage = new CloudinaryStorage({
+    cloudinary: cloudinary,
+    params: {
+        folder: 'procurement_uploads', // Cloudinary mein is naam ka folder ban jayega
+        allowed_formats: ['jpg', 'jpeg', 'png', 'pdf'],
+        public_id: (req, file) => `${Date.now()}-${file.originalname.replace(/\s/g, '_')}`,
     },
-    filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname.replace(/\s/g, '_')}`)
 });
-const upload = multer({ storage });
+
+const upload = multer({ storage }); // Use Cloudinary storage
 const excelUpload = multer({ storage: multer.memoryStorage() });
+
 
 // ================== AUTH MIDDLEWARE ==================
 const authenticateToken = (req, res, next) => {
@@ -136,8 +147,10 @@ app.post('/api/requisitions', authenticateToken, upload.any(), async (req, res, 
         for (const [i, item] of parsedItems.entries()) {
             const drawingFile = req.files.find(f => f.fieldname === `drawing_${i}`);
             const specimenFile = req.files.find(f => f.fieldname === `specimen_${i}`);
-            const drawingUrl = drawingFile ? `/uploads/${drawingFile.filename}` : null;
-            const specimenUrl = specimenFile ? `/uploads/${specimenFile.filename}` : null;
+            
+            // Cloudinary se full URL save hoga
+            const drawingUrl = drawingFile ? drawingFile.path : null;
+            const specimenUrl = specimenFile ? specimenFile.path : null;
 
             await connection.query('INSERT INTO requisition_items (requisition_id, item_sl_no, item_name, item_code, description, quantity, unit, freight_required, delivery_location, drawing_url, specimen_url, status, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())', 
             [reqId, i + 1, item.ItemName, item.ItemCode, item.Description, item.Quantity, item.Unit, item.FreightRequired, item.DeliveryLocation, drawingUrl, specimenUrl, 'Pending Approval', req.user.userId]);
@@ -463,7 +476,7 @@ app.post('/api/admin/bids-for-items', authenticateToken, isAdmin, async (req, re
     }
 });
 
-// BUG FIX: `item_name` and other details were not being saved to awarded_contracts
+// Awarding Contracts Endpoint
 app.post('/api/contracts/award', authenticateToken, isAdmin, async (req, res, next) => {
     const { bids } = req.body;
     let connection;
@@ -477,9 +490,10 @@ app.post('/api/contracts/award', authenticateToken, isAdmin, async (req, res, ne
                 throw new Error(`Item with ID ${bid.item_id} not found.`);
             }
 
-            await connection.query('UPDATE requisition_items SET status = "Awarded" WHERE item_id = ?', [bid.item_id]);
-            await connection.query('UPDATE bids SET bid_status = "Awarded" WHERE bid_id = ?', [bid.bid_id]);
-            await connection.query('UPDATE bids SET bid_status = "Rejected" WHERE item_id = ? AND bid_id != ?', [bid.item_id, bid.bid_id]);
+            // === ERROR FIX: Parameterize status strings to prevent SQL errors ===
+            await connection.query('UPDATE requisition_items SET status = ? WHERE item_id = ?', ['Awarded', bid.item_id]);
+            await connection.query('UPDATE bids SET bid_status = ? WHERE bid_id = ?', ['Awarded', bid.bid_id]);
+            await connection.query('UPDATE bids SET bid_status = ? WHERE item_id = ? AND bid_id != ?', ['Rejected', bid.item_id, bid.bid_id]);
             
             await connection.query('DELETE FROM awarded_contracts WHERE item_id = ?', [bid.item_id]);
             
@@ -507,11 +521,15 @@ app.post('/api/contracts/award', authenticateToken, isAdmin, async (req, res, ne
 
 app.get('/api/admin/awarded-contracts', authenticateToken, isAdmin, async (req, res, next) => {
     try {
+        // === FIX: Explicitly select item_name from requisition_items table ===
         const query = `
             SELECT 
-                ac.*, 
-                u.full_name as vendor_name,
-                ri.item_sl_no
+                ac.contract_id, ac.item_id, ac.requisition_id, ac.vendor_id, 
+                ac.awarded_amount, ac.ex_works_rate, ac.freight_rate,
+                ac.winning_bid_id, ac.remarks, ac.awarded_date,
+                ri.item_name,
+                ri.item_sl_no,
+                u.full_name as vendor_name
             FROM awarded_contracts ac
             JOIN users u ON ac.vendor_id = u.user_id
             JOIN requisition_items ri ON ac.item_id = ri.item_id
@@ -576,7 +594,19 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
             ${(startDate && endDate) ? `WHERE ac.awarded_date BETWEEN ? AND ?` : ''}
             GROUP BY month ORDER BY month ASC`;
 
-        const detailedReportQuery = `SELECT ac.* FROM awarded_contracts ac WHERE ${dateFilter} ORDER BY ac.awarded_date DESC`;
+        // === FIX: Join tables to reliably get item_name and vendor_name ===
+        const detailedReportQuery = `
+            SELECT 
+                ac.contract_id, ac.item_id, ac.requisition_id,
+                ac.awarded_amount, ac.awarded_date,
+                ri.item_name, 
+                ri.item_sl_no,
+                u.full_name as vendor_name
+            FROM awarded_contracts ac
+            JOIN requisition_items ri ON ac.item_id = ri.item_id
+            JOIN users u ON ac.vendor_id = u.user_id
+            WHERE ${dateFilter} 
+            ORDER BY ac.awarded_date DESC`;
 
         const [
             [[kpis]], [[savings]], [topVendors], [categorySpend], [savingsTrend], [detailedReport]
@@ -664,7 +694,7 @@ app.post('/api/requisitions/bulk-upload', authenticateToken, isAdmin, excelUploa
 
         for (const [i, item] of items.entries()) {
             await connection.query(
-                'INSERT INTO requisition_items (requisition_id, item_sl_no, item_name, item_code, description, quantity, unit, freight_required, delivery_location, status, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())',
+                'INSERT INTO requisition_items (requisition_id, item_sl_no, item_name, item_code, description, quantity, unit, freight_required, delivery_location, status, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())',
                 [reqId, i + 1, item.ItemName, item.ItemCode, item.Description, item.Quantity, item.Unit, (String(item.FreightRequired).toLowerCase() === 'yes'), item.DeliveryLocation, 'Pending Approval', req.user.userId]
             );
         }
@@ -862,7 +892,6 @@ app.get('/api/users/chattable', authenticateToken, async (req, res, next) => {
     }
 });
 
-// BUG FIX: Corrected query for ONLY_FULL_GROUP_BY SQL mode
 app.get('/api/conversations', authenticateToken, async (req, res, next) => {
     try {
         const myId = req.user.userId;
