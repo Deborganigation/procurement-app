@@ -37,7 +37,6 @@ const dbPool = mysql.createPool({
     queueLimit: 0,
     connectTimeout: 20000,
     dateStrings: true,
-    // ===== SAHI SSL CONFIGURATION (Aiven ke liye) =====
     ssl: {
         ca: fs.readFileSync(path.join(__dirname, 'ca.pem'))
     }
@@ -120,8 +119,7 @@ app.get('/api/dropdowns/locations', authenticateToken, (req, res) => {
     res.json({ success: true, data: ["Dhulaghar", "Kharagpur", "Dankuni", "Kolkata"] });
 });
 
-const anyUpload = upload.any();
-app.post('/api/requisitions', authenticateToken, anyUpload, async (req, res, next) => {
+app.post('/api/requisitions', authenticateToken, upload.any(), async (req, res, next) => {
     let connection;
     try {
         connection = await dbPool.getConnection();
@@ -394,9 +392,9 @@ app.post('/api/requisitions/approve', authenticateToken, isAdmin, async (req, re
         
         await connection.beginTransaction();
         if (approvedItemIds && approvedItemIds.length > 0) {
-            await connection.query('UPDATE requisition_items SET status = "Active" WHERE item_id IN (?)', [approvedItemIds]);
+            await connection.query("UPDATE requisition_items SET status = 'Active' WHERE item_id IN (?)", [approvedItemIds]);
         }
-        await connection.query('UPDATE requisitions SET status = "Processed", approved_at = NOW() WHERE requisition_id = ?', [requisitionId]);
+        await connection.query("UPDATE requisitions SET status = 'Processed', approved_at = NOW() WHERE requisition_id = ?", [requisitionId]);
         if (vendorAssignments) {
             await connection.query('DELETE FROM requisition_assignments WHERE requisition_id = ?', [requisitionId]);
             if(vendorAssignments.length > 0) {
@@ -512,9 +510,11 @@ app.get('/api/admin/awarded-contracts', authenticateToken, isAdmin, async (req, 
         const query = `
             SELECT 
                 ac.*, 
-                u.full_name as vendor_name
+                u.full_name as vendor_name,
+                ri.item_sl_no
             FROM awarded_contracts ac
             JOIN users u ON ac.vendor_id = u.user_id
+            JOIN requisition_items ri ON ac.item_id = ri.item_id
             ORDER BY ac.awarded_date DESC`;
         const [contracts] = await dbPool.query(query);
         res.json({ success: true, data: contracts });
@@ -619,7 +619,6 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
     }
 });
 
-// BUG FIX: Corrected query to update status from 'Awarded' to 'Active'
 app.post('/api/items/reopen-bidding', authenticateToken, isAdmin, async (req, res, next) => {
     let connection;
     try {
@@ -628,8 +627,8 @@ app.post('/api/items/reopen-bidding', authenticateToken, isAdmin, async (req, re
         
         await connection.beginTransaction();
         await connection.query('DELETE FROM awarded_contracts WHERE item_id IN (?)', [itemIds]);
-        await connection.query(`UPDATE requisition_items SET status = 'Active' WHERE item_id IN (?)`, [itemIds]);
-        await connection.query(`UPDATE bids SET bid_status = 'Submitted' WHERE item_id IN (?)`, [itemIds]);
+        await connection.query("UPDATE requisition_items SET status = 'Active' WHERE item_id IN (?)", [itemIds]);
+        await connection.query("UPDATE bids SET bid_status = 'Submitted' WHERE item_id IN (?)", [itemIds]);
 
         await connection.commit();
         res.json({ success: true, message: 'Bidding re-opened successfully.' });
