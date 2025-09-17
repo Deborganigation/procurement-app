@@ -104,6 +104,13 @@
         .card-body { padding: 1.5rem; }
         .table-hover>tbody>tr:hover>* { background-color: #f6f9fc; }
 
+        .bidding-row .bid-input-group {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            align-items: end;
+        }
+
         @media (max-width: 992px) {
             .sidebar { transform: translateX(-100%); width: 280px; }
             .sidebar.active { transform: translateX(0); }
@@ -464,12 +471,6 @@
             if (currentViewLink.length > 0) {
                 showToast('Refreshing data...', 'info');
                 const viewId = currentViewLink.data('view');
-                const user = JSON.parse(sessionStorage.getItem('loggedInUser'));
-                if (user && user.role === 'User') {
-                    PRODUCT_LIST = []; 
-                    LOCATION_DROPDOWN_DATA = [];
-                    await Promise.all([fetchProductList(), fetchLocationDropdownData()]);
-                }
                 navigateTo(viewId); 
             }
         }
@@ -503,9 +504,6 @@
             $('#user-email-sidebar').text(user.email);
             $('#nav-links .nav-link').hide();
             $(`.${user.role.toLowerCase()}-nav-item`).css('display', 'flex');
-            
-            await fetchLocationDropdownData();
-            if (user.role === 'User') await fetchProductList();
             
             const defaultViewMap = { 'Admin': 'admin-dashboard-view', 'Vendor': 'vendor-dashboard-view', 'User': 'user-create-req-view' };
             navigateTo(defaultViewMap[user.role]);
@@ -698,11 +696,10 @@
                     const bidRow = `
                         <tr class="bidding-row">
                             <td colspan="4" class="p-3 bg-light">
-                                <div class="row g-2 align-items-center">
-                                    <div class="col-md-3"><label class="form-label small mb-1">Ex-works Rate/Unit (₹)</label><input type="number" step="0.01" class="form-control form-control-sm ex-works-rate" value="${item.my_ex_works_rate || ''}" oninput="calculateTotalBid(this)"></div>
-                                    <div class="col-md-3"><label class="form-label small mb-1">Freight Rate/Unit (₹)</label><input type="number" step="0.01" class="form-control form-control-sm freight-rate" value="${freightValue}" oninput="calculateTotalBid(this)" ${freightReadonly}></div>
-                                    <div class="col-md-3"><label class="form-label small mb-1">Total Bid Amount (₹)</label><p class="form-control-plaintext fw-bold total-bid-amount ps-2">${formatCurrency(item.my_bid_amount) || '₹0.00'}</p></div>
-                                    <div class="col-md-3 d-grid"></div>
+                                <div class="bid-input-group">
+                                    <div><label class="form-label small mb-1">Ex-works Rate/Unit (₹)</label><input type="number" step="0.01" class="form-control form-control-sm ex-works-rate" value="${item.my_ex_works_rate || ''}" oninput="calculateTotalBid(this)"></div>
+                                    <div><label class="form-label small mb-1">Freight Rate/Unit (₹)</label><input type="number" step="0.01" class="form-control form-control-sm freight-rate" value="${freightValue}" oninput="calculateTotalBid(this)" ${freightReadonly}></div>
+                                    <div><label class="form-label small mb-1">Total Bid Amount (₹)</label><p class="form-control-plaintext fw-bold total-bid-amount ps-2">${formatCurrency(item.my_bid_amount) || '₹0.00'}</p></div>
                                 </div>
                             </td>
                         </tr>
@@ -736,12 +733,16 @@
 
         async function load_user_create_req_view() {
             $('#requisition-form')[0].reset();
-            $('#requisition-items-container').html(`<div class="text-center p-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">Fetching product master data...</p></div>`);
-            
-            await fetchProductList();
-            
             $('#requisition-items-container').html('');
             itemCounter = 0;
+            
+            // BUG FIX: Prevent re-fetching product list if it's already loaded.
+            if (PRODUCT_LIST.length === 0) { 
+                $('#requisition-items-container').html(`<div class="text-center p-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">Fetching product master data...</p></div>`);
+                await Promise.all([fetchProductList(), fetchLocationDropdownData()]);
+                $('#requisition-items-container').html('');
+            }
+            
             addRequisitionItem();
             
             const result = await apiCall('/users/vendors');
@@ -795,9 +796,9 @@
 
             if (convosResult.success) {
                 convosResult.data.forEach(convo => {
-                    if (allUsersMap.has(convo.user_id)) {
-                        allUsersMap.set(convo.user_id, {
-                            ...allUsersMap.get(convo.user_id),
+                    if (allUsersMap.has(convo.other_user_id)) {
+                        allUsersMap.set(convo.other_user_id, {
+                            ...allUsersMap.get(convo.other_user_id),
                             lastMessage: convo.lastMessage,
                             lastMessageTimestamp: convo.lastMessageTimestamp,
                             unreadCount: convo.unreadCount
@@ -867,11 +868,14 @@
             if(result.success) {
                 $('#bids-tbody').html(result.data.bids.map((bid, i) => {
                     const bidDataForAward = {
-                        bid_id: bid.bid_id, item_id: bid.item_id, vendor_id: bid.vendor_id, 
+                        bid_id: bid.bid_id, 
+                        item_id: bid.item_id, 
+                        vendor_id: bid.vendor_id, 
                         bid_amount: bid.bid_amount,
-                        vendor_name: bid.vendor_name, vendor_email: bid.vendor_email, 
-                        item_name: itemName, requisition_id: result.data.requisition_id,
-                        item_sl_no: result.data.item_sl_no
+                        vendor_name: bid.vendor_name, 
+                        vendor_email: bid.vendor_email,
+                        ex_works_rate: bid.ex_works_rate,
+                        freight_rate: bid.freight_rate,
                     };
                     return `
                     <tr data-bid='${JSON.stringify(bidDataForAward)}'>
@@ -1093,8 +1097,7 @@
         // =========================================================
         // ================ HELPER & REPORTING =====================
         // =========================================================
-        async function fetchProductList(){if(PRODUCT_LIST.length>0)return;try{const r=await fetch(PRODUCT_DATA_URL);if(!r.ok) throw new Error('Network response not ok');PRODUCT_LIST=await r.json()}catch(e){showToast('Could not load product master data. Please refresh.','error'); console.error(e); $('#requisition-items-container').html(`<div class="alert alert-danger">Failed to load product list. Please try refreshing the page.</div>`)}}
-        async function fetchLocationDropdownData(){if(LOCATION_DROPDOWN_DATA.length>0)return;const r=await apiCall('/dropdowns/locations');if(r.success)LOCATION_DROPDOWN_DATA=r.data}
+        async function fetchProductList(){if(PRODUCT_LIST.length>0 && LOCATION_DROPDOWN_DATA.length > 0)return;try{const[productsResponse,locationsResponse]=await Promise.all([fetch(PRODUCT_DATA_URL),apiCall('/dropdowns/locations', 'GET', null, false, false)]);if(!productsResponse.ok)throw new Error('Network response for products not ok');PRODUCT_LIST=await productsResponse.json();if(locationsResponse.success)LOCATION_DROPDOWN_DATA=locationsResponse.data}catch(e){showToast('Could not load master data. Please refresh.','error');console.error(e);$('#requisition-items-container').html(`<div class="alert alert-danger">Failed to load master data. Please try refreshing the page.</div>`)}}
         function showToast(m,t='info'){const c=$('#toast-container'),e=$(`<div><i class="fas ${t === 'success' ? 'fa-check-circle' : 'fa-times-circle'} me-2"></i><span>${m}</span></div>`).addClass(`toast-notification ${t}`);c.append(e);setTimeout(()=>e.remove(),5000)}
         function showLoader(){$('#loader-overlay').removeClass('hidden')}
         function hideLoader(){$('#loader-overlay').addClass('hidden')}
@@ -1110,8 +1113,9 @@
         }
         function createChart(chartId, type, data, options = {}) {
             if (charts[chartId]) charts[chartId].destroy();
-            const ctx = document.getElementById(chartId).getContext('2d');
-            charts[chartId] = new Chart(ctx, { type, data, options });
+            const ctx = document.getElementById(chartId);
+            if(!ctx) return;
+            charts[chartId] = new Chart(ctx.getContext('2d'), { type, data, options });
         }
         
         async function updateReportView() {
