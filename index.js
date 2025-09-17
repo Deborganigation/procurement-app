@@ -37,7 +37,7 @@ const dbPool = mysql.createPool({
     queueLimit: 0,
     connectTimeout: 20000,
     dateStrings: true,
-    // Add SSL configuration for services like Aiven
+    // ===== SAHI SSL CONFIGURATION (Aiven ke liye) =====
     ssl: {
         ca: fs.readFileSync(path.join(__dirname, 'ca.pem'))
     }
@@ -465,6 +465,7 @@ app.post('/api/admin/bids-for-items', authenticateToken, isAdmin, async (req, re
     }
 });
 
+// BUG FIX: `item_name` and other details were not being saved to awarded_contracts
 app.post('/api/contracts/award', authenticateToken, isAdmin, async (req, res, next) => {
     const { bids } = req.body;
     let connection;
@@ -473,7 +474,6 @@ app.post('/api/contracts/award', authenticateToken, isAdmin, async (req, res, ne
         await connection.beginTransaction();
         
         for (const bid of bids) {
-            // BUG FIX: Fetch full item details before inserting to awarded_contracts
             const [[itemDetails]] = await connection.query('SELECT * FROM requisition_items WHERE item_id = ?', [bid.item_id]);
             if (!itemDetails) {
                 throw new Error(`Item with ID ${bid.item_id} not found.`);
@@ -509,7 +509,6 @@ app.post('/api/contracts/award', authenticateToken, isAdmin, async (req, res, ne
 
 app.get('/api/admin/awarded-contracts', authenticateToken, isAdmin, async (req, res, next) => {
     try {
-        // BUG FIX: The original query was complex and sometimes failed. Simplified for clarity and correctness.
         const query = `
             SELECT 
                 ac.*, 
@@ -976,4 +975,3 @@ app.use((err, req, res, next) => {
 // ================== SERVER START ==================
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server is running on http://localhost:${PORT}`));
-
