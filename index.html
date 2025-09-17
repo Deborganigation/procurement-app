@@ -1316,6 +1316,15 @@
                 exportToExcel(dataToExport, 'My_Awarded_Contracts.xlsx');
             }
         }
+        function selectAllL1Bids() {
+            const l1Row = $('#bids-tbody tr').first();
+            if (l1Row.length) {
+                const checkbox = l1Row.find('.bid-checkbox');
+                if (!checkbox.is(':disabled')) {
+                    checkbox.prop('checked', true);
+                }
+            }
+        }
     </script>
 </body>
 </html>
