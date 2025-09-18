@@ -61,10 +61,10 @@
         #login-container .form-control::placeholder { color: rgba(255,255,255,0.7); }
         #login-container .text-muted { color: rgba(255,255,255,0.8) !important; }
         #login-container a { color: var(--info-color); }
-        
+
         .password-container { position: relative; }
         .password-container .toggle-password { position: absolute; top: 50%; right: 15px; transform: translateY(-50%); cursor: pointer; color: rgba(255,255,255,0.7); }
-        
+
         .wrapper { display: flex; }
 
         .sidebar { width: 260px; background: var(--sidebar-bg); color: var(--sidebar-text); display: flex; flex-direction: column; position: fixed; top: 0; left: 0; height: 100vh; z-index: 1001; transition: all 0.3s ease-in-out; box-shadow: 0 0 2rem 0 rgba(136,152,170,.15); }
@@ -104,7 +104,7 @@
         .kpi-card-small .kpi-icon { font-size: 1.5rem; padding: 12px; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; border-radius: 50%; margin-right: 15px; color: #fff; }
         .kpi-card-small .kpi-info h6 { color: var(--text-muted); margin-bottom: 0px; text-transform: uppercase; font-size: 0.75rem; font-weight: 600;}
         .kpi-card-small .kpi-info p { font-size: 1.5rem; font-weight: 600; margin-bottom: 0; line-height: 1.2; color: var(--text-dark);}
-        
+
         .card { border: none; border-radius: .5rem; box-shadow: 0 1px 3px rgba(50,50,93,.15), 0 1px 0 rgba(0,0,0,.02); }
         .card-header { background-color: var(--card-bg); border-bottom: 1px solid var(--border-color); font-weight: 600; padding: 1.25rem 1.5rem; }
         .card-body { padding: 1.5rem; }
@@ -208,7 +208,7 @@
                 <a class="nav-link vendor-nav-item" data-view="vendor-awarded-view" onclick="navigateTo(this.dataset.view)">
                     <div class="nav-link-text"><i class="fas fa-trophy"></i> <span>My Awarded Contracts</span></div>
                 </a>
-                
+
                 <a class="nav-link user-nav-item" data-view="user-create-req-view" onclick="navigateTo(this.dataset.view)">
                     <div class="nav-link-text"><i class="fas fa-edit"></i> <span>Create Requisition</span></div>
                 </a>
@@ -531,7 +531,7 @@
 
                 const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
                 
-                if (response.status === 401 || (response.status === 403 && !isFormData)) { 
+                if (response.status === 401 || (response.status === 403 && !isFormData)) {
                     const errorData = await response.clone().json().catch(() => ({}));
                     if (errorData.message && errorData.message.includes('maximum of 3 bids')) {
                           throw new Error(errorData.message);
@@ -586,10 +586,10 @@
                 showToast('Refreshing data...', 'info');
                 const viewId = currentViewLink.data('view');
                 if (viewId === 'user-create-req-view') {
-                    PRODUCT_LIST = []; 
+                    PRODUCT_LIST = [];
                     LOCATION_DROPDOWN_DATA = [];
                 }
-                navigateTo(viewId); 
+                navigateTo(viewId);
             }
         }
 
@@ -612,10 +612,10 @@
                 }
             }
         }
-        function handleLogout() { 
+        function handleLogout() {
             if(backgroundRefreshInterval) clearInterval(backgroundRefreshInterval);
-            sessionStorage.clear(); 
-            window.location.reload(); 
+            sessionStorage.clear();
+            window.location.reload();
         }
         function handleRoleChange() { const isVendor = $('#reg-role').val() === 'Vendor'; $('#reg-company-wrapper').toggleClass('hidden', !isVendor); $('#reg-gstin-wrapper').toggleClass('hidden', !isVendor); $('#reg-company').prop('required', isVendor); }
         async function handleRegistration(e) { e.preventDefault(); const data = { FullName: $('#reg-fullname').val(), Email: $('#reg-email').val(), Password: $('#reg-password').val(), Role: $('#reg-role').val(), CompanyName: $('#reg-company').val(), ContactNumber: $('#reg-contact').val(), GSTIN: $('#reg-gstin').val() }; const result = await apiCall('/register', 'POST', data); if (result.success) { showToast(result.message, 'success'); registerModal.hide(); $(e.target)[0].reset(); } }
@@ -925,7 +925,7 @@
             $('#requisition-items-container').html('');
             itemCounter = 0;
             
-            if (PRODUCT_LIST.length === 0 || LOCATION_DROPDOWN_DATA.length === 0) { 
+            if (PRODUCT_LIST.length === 0 || LOCATION_DROPDOWN_DATA.length === 0) {
                 $('#requisition-items-container').html(`<div class="text-center p-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">Fetching master data...</p></div>`);
                 await fetchMasterData();
                 $('#requisition-items-container').html('');
@@ -1023,11 +1023,11 @@
                             <small class="text-muted">${timeAgo}</small>
                         </a>`);
                     
-                    chatItem.on('click', (e) => { 
-                        e.preventDefault(); 
-                        $('#chat-list .list-group-item').removeClass('active'); 
+                    chatItem.on('click', (e) => {
+                        e.preventDefault();
+                        $('#chat-list .list-group-item').removeClass('active');
                         chatItem.addClass('active');
-                        openChat(user.user_id, user.full_name); 
+                        openChat(user.user_id, user.full_name);
                     });
                     chatList.append(chatItem);
                 });
@@ -1057,11 +1057,11 @@
                 const itemDetails = result.data.itemDetails;
                 $('#bids-tbody').html(result.data.bids.map((bid, i) => {
                     const bidDataForAward = {
-                        bid_id: bid.bid_id, 
-                        item_id: bid.item_id, 
-                        vendor_id: bid.vendor_id, 
+                        bid_id: bid.bid_id,
+                        item_id: bid.item_id,
+                        vendor_id: bid.vendor_id,
                         bid_amount: bid.bid_amount,
-                        vendor_name: bid.vendor_name, 
+                        vendor_name: bid.vendor_name,
                         vendor_email: bid.vendor_email,
                         ex_works_rate: bid.ex_works_rate,
                         freight_rate: bid.freight_rate,
@@ -1137,7 +1137,7 @@
                         invalidBids.push(item.item_name);
                     } else {
                         bidsToSubmit.push({
-                            original_item_ids: item.original_item_ids, 
+                            original_item_ids: item.original_item_ids,
                             item_name: item.item_name,
                             ex_works_rate: exWorks,
                             freight_rate: freight,
@@ -1235,9 +1235,9 @@
             result.data.forEach((itemData, index) => {
                 let bidsTableHtml = '<p class="text-center text-muted">No bids submitted.</p>';
                 if (itemData.bids.length > 0) {
-                    bidsTableHtml = `<div class="table-responsive"><table class="table table-sm table-striped"><thead><tr><th>Select</th><th>Rank</th><th>Vendor</th><th>Amount (₹)</th></tr></thead><tbody>${itemData.bids.map((bid, rankIndex) => { 
+                    bidsTableHtml = `<div class="table-responsive"><table class="table table-sm table-striped"><thead><tr><th>Select</th><th>Rank</th><th>Vendor</th><th>Amount (₹)</th></tr></thead><tbody>${itemData.bids.map((bid, rankIndex) => {
                         const bidDataForAward = { ...bid, item_name: itemData.item_name, requisition_id: itemData.requisition_id, item_sl_no: itemData.item_sl_no };
-                        return `<tr><td><input class="form-check-input" type="radio" name="award-radio-${itemData.item_id}" value='${JSON.stringify(bidDataForAward)}'></td><td><span class="badge bg-info">L${rankIndex + 1}</span></td><td>${bid.vendor_name}</td><td><strong>${formatCurrency(bid.bid_amount)}</strong></td></tr>`; 
+                        return `<tr><td><input class="form-check-input" type="radio" name="award-radio-${itemData.item_id}" value='${JSON.stringify(bidDataForAward)}'></td><td><span class="badge bg-info">L${rankIndex + 1}</span></td><td>${bid.vendor_name}</td><td><strong>${formatCurrency(bid.bid_amount)}</strong></td></tr>`;
                     }).join('')}</tbody></table></div>`;
                 }
                 accordionContainer.append(`<div class="accordion-item"><h2 class="accordion-header"><button class="accordion-button ${index > 0 ? 'collapsed' : ''}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-award-${itemData.item_id}"><strong>Item:</strong> ${itemData.item_name}</button></h2><div id="collapse-award-${itemData.item_id}" class="accordion-collapse collapse ${index === 0 ? 'show' : ''}" data-bs-parent="#advanced-bulk-award-modal-body"><div class="accordion-body">${bidsTableHtml}</div></div></div>`);
@@ -1476,23 +1476,23 @@
 
         async function downloadBiddingHistoryReport() { const result = await apiCall('/admin/bidding-history'); if(result.success) { const formattedData = result.data.map(d => ({ 'Req ID': `REQ-${d.requisition_id}-${d.item_sl_no}`, 'Item Name': d.item_name, 'Vendor Name': d.vendor_name, 'Bid Amount': d.bid_amount, 'Ex-works Rate': d.ex_works_rate, 'Freight Rate': d.freight_rate, 'Status': d.bid_status, 'Date': new Date(d.submitted_at).toLocaleString() })); exportToExcel(formattedData, 'Bidding_History_Report.xlsx'); }}
         
-        async function downloadAdminAwardedContractsReport() { 
-            const result = await apiCall('/admin/awarded-contracts'); 
-            if(result.success) { 
-                const dataToExport = result.data.map(c => ({ 
-                    'Req ID': `REQ-${c.requisition_id}-${c.item_sl_no}`, 
-                    'Item Name': c.item_name, 
+        async function downloadAdminAwardedContractsReport() {
+            const result = await apiCall('/admin/awarded-contracts');
+            if(result.success) {
+                const dataToExport = result.data.map(c => ({
+                    'Req ID': `REQ-${c.requisition_id}-${c.item_sl_no}`,
+                    'Item Name': c.item_name,
                     'Quantity': c.quantity,
                     'Unit': c.unit,
-                    'Vendor Name': c.vendor_name, 
+                    'Vendor Name': c.vendor_name,
                     'Ex-works Rate': c.ex_works_rate,
                     'Freight Rate': c.freight_rate,
-                    'Awarded Amount': c.awarded_amount, 
-                    'Awarded Date': new Date(c.awarded_date).toLocaleDateString(), 
-                    'Remarks': c.remarks 
-                })); 
-                exportToExcel(dataToExport, 'Awarded_Contracts_Report.xlsx'); 
-            } 
+                    'Awarded Amount': c.awarded_amount,
+                    'Awarded Date': new Date(c.awarded_date).toLocaleDateString(),
+                    'Remarks': c.remarks
+                }));
+                exportToExcel(dataToExport, 'Awarded_Contracts_Report.xlsx');
+            }
         }
         
         async function downloadMyBidsReport() {
@@ -1540,7 +1540,7 @@
 
             if (result.success && result.data.length > 0) {
                 badge.text(result.data.length).show();
-                notificationList.find('li:not(:first-child, .dropdown-divider)').remove(); 
+                notificationList.find('li:not(:first-child, .dropdown-divider)').remove();
                 result.data.forEach(notif => {
                     const item = $(`<li><a class="dropdown-item" href="#" onclick="navigateTo('${notif.view}', event)">${notif.text}</a></li>`);
                     notificationList.find('.dropdown-divider').before(item);
@@ -1555,11 +1555,11 @@
         async function fetchSidebarCounts() {
              const result = await apiCall('/sidebar-counts', 'GET', null, false, false);
              if (result.success) {
-                const counts = result.data;
-                $('#badge-unread-messages').text(counts.unreadMessages > 0 ? counts.unreadMessages : '').toggle(counts.unreadMessages > 0);
-                $('#badge-pending-reqs').text(counts.pendingReqs > 0 ? counts.pendingReqs : '').toggle(counts.pendingReqs > 0);
-                $('#badge-pending-users').text(counts.pendingUsers > 0 ? counts.pendingUsers : '').toggle(counts.pendingUsers > 0);
-            }
+                 const counts = result.data;
+                 $('#badge-unread-messages').text(counts.unreadMessages > 0 ? counts.unreadMessages : '').toggle(counts.unreadMessages > 0);
+                 $('#badge-pending-reqs').text(counts.pendingReqs > 0 ? counts.pendingReqs : '').toggle(counts.pendingReqs > 0);
+                 $('#badge-pending-users').text(counts.pendingUsers > 0 ? counts.pendingUsers : '').toggle(counts.pendingUsers > 0);
+             }
         }
 
         async function handleMarkAllNotificationsRead(e) {
