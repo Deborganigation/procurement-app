@@ -647,42 +647,67 @@
             const result = await apiCall('/admin/dashboard-stats');
             if (result.success) {
                 const data = result.data;
-                $('#stats-active-items').text(data.activeItems);
-                $('#stats-pending-users').text(data.pendingUsers);
-                $('#stats-pending-reqs').text(data.pendingRequisitionsCount);
-                $('#stats-awarded-contracts').text(data.awardedContracts);
+                $('#stats-active-items').text(data.activeItems || '0');
+                $('#stats-pending-users').text(data.pendingUsers || '0');
+                $('#stats-pending-reqs').text(data.pendingRequisitionsCount || '0');
+                $('#stats-awarded-contracts').text(data.awardedContracts || '0');
                 
-                // Latest Requisitions
+                // Populate Latest Requisitions
                 const latestReqsList = $('#admin-latest-reqs-list');
+                latestReqsList.empty();
                 if (data.latestRequisitions && data.latestRequisitions.length > 0) {
-                    latestReqsList.html(data.latestRequisitions.map(req => `
-                        <div class="list-group-item list-group-item-action">
-                            <div class="d-flex w-100 justify-content-between">
-                                <h6 class="mb-1">REQ-${req.requisition_id}</h6>
-                                <small>${formatDate(req.created_at)}</small>
+                    data.latestRequisitions.forEach(req => {
+                        latestReqsList.append(`
+                            <div class="list-group-item list-group-item-action">
+                                <div class="d-flex w-100 justify-content-between">
+                                    <h6 class="mb-1">REQ-${req.requisition_id || 'N/A'}</h6>
+                                    <small>${formatDate(req.created_at)}</small>
+                                </div>
+                                <p class="mb-1 small">by ${req.creator_name || 'N/A'}</p>
+                                <small class="text-muted">${req.item_count} items - ${req.status || 'N/A'}</small>
                             </div>
-                            <p class="mb-1 small">by ${req.creator_name}</p>
-                            <small class="text-muted">${req.item_count} items - ${req.status}</small>
-                        </div>
-                    `).join(''));
+                        `);
+                    });
                 } else {
                     latestReqsList.html('<div class="list-group-item text-center text-muted">No recent requisitions.</div>');
                 }
 
-                // Notifications Feed
+                // Populate Notifications Feed
                 const notificationsFeed = $('#admin-notifications-feed');
+                notificationsFeed.empty();
                 if (data.notifications && data.notifications.length > 0) {
-                    notificationsFeed.html(data.notifications.map(notif => `
-                        <div class="list-group-item">
-                            <div class="d-flex w-100 justify-content-between">
-                                <p class="mb-1 small">${notif.text}</p>
+                    data.notifications.forEach(notif => {
+                        notificationsFeed.append(`
+                            <div class="list-group-item">
+                                <div class="d-flex w-100 justify-content-between">
+                                    <p class="mb-1 small">${notif.text || 'N/A'}</p>
+                                </div>
+                                <small class="text-muted">${formatDate(notif.timestamp, true)}</small>
                             </div>
-                            <small class="text-muted">${formatDate(notif.timestamp, true)}</small>
-                        </div>
-                    `).join(''));
+                        `);
+                    });
                 } else {
                     notificationsFeed.html('<div class="list-group-item text-center text-muted">No new notifications.</div>');
                 }
+                
+                // Initialize Charts
+                createChart('adminRequisitionChart', 'bar', {
+                    labels: data.charts.reqTrends.labels,
+                    datasets: [{
+                        label: 'Requisitions Created',
+                        data: data.charts.reqTrends.data,
+                        backgroundColor: '#5E72E4',
+                    }]
+                }, { responsive: true, maintainAspectRatio: false });
+
+                createChart('adminVendorBiddingChart', 'doughnut', {
+                    labels: data.charts.biddingActivity.labels,
+                    datasets: [{
+                        label: 'Bids Submitted',
+                        data: data.charts.biddingActivity.data,
+                        backgroundColor: ['#5E72E4', '#2DCE89', '#FB6340', '#11CDEF', '#F5365C'],
+                    }]
+                }, { responsive: true, maintainAspectRatio: false });
             }
         }
         
@@ -704,7 +729,7 @@
                 
                 accordion.append(`
                     <div class="accordion-item">
-                        <h2 class="accordion-header"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${reqId}">Req ID: REQ-${reqId} (By: ${req.creator}) - ${reqItems.length} items</button></h2>
+                        <h2 class="accordion-header"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${reqId}">Req ID: REQ-${reqId || 'N/A'} (By: ${req.creator || 'N/A'}) - ${reqItems.length} items</button></h2>
                         <div id="collapse-${reqId}" class="accordion-collapse collapse" data-bs-parent="#pending-reqs-accordion">
                             <div class="accordion-body">
                                 <h6>Select items to approve:</h6><ul class="list-group mb-3">${itemsHTML}</ul>
@@ -723,15 +748,15 @@
                 $('#admin-req-tbody').html(result.data.map(item => `
                     <tr data-item-id="${item.item_id}">
                         <td><input type="checkbox" class="form-check-input req-item-checkbox"></td>
-                        <td>REQ-${item.requisition_id}-${item.item_sl_no}</td>
-                        <td>${item.item_name}<br/><small class="text-muted">${item.item_code || ''} | ${createImageLinks(item)}</small></td>
+                        <td>REQ-${item.requisition_id || 'N/A'}-${item.item_sl_no || 'N/A'}</td>
+                        <td>${item.item_name || 'N/A'}<br/><small class="text-muted">${item.item_code || ''} | ${createImageLinks(item)}</small></td>
                         <td><small>${item.assigned_vendors || 'N/A'}</small></td>
-                        <td><span class="badge bg-${getBadgeColor(item.status)}">${item.status}</span></td>
+                        <td><span class="badge bg-${getBadgeColor(item.status)}">${item.status || 'N/A'}</span></td>
                         <td>${item.l1_vendor || 'No Bids'}</td>
                         <td>${item.l1_rate ? formatCurrency(item.l1_rate) : '-'}</td>
                         <td>
                             <div class="btn-group btn-group-sm">
-                                <button class="btn btn-info" onclick="openAdminActionModal(${item.item_id}, '${item.item_name.replace(/'/g, "\\'")}')">View Bids</button>
+                                <button class="btn btn-info" onclick="openAdminActionModal(${item.item_id}, '${item.item_name ? item.item_name.replace(/'/g, "\\'") : 'N/A'}')">View Bids</button>
                                 <button class="btn btn-secondary" onclick="openAssignVendorsModal(${item.requisition_id})">Assign</button>
                             </div>
                         </td>
@@ -745,11 +770,11 @@
             if (result.success) {
                 $('#admin-bids-tbody').html(result.data.map(bid => `
                     <tr>
-                        <td>REQ-${bid.requisition_id}-${bid.item_sl_no}</td>
-                        <td>${bid.item_name}</td>
-                        <td>${bid.vendor_name}</td>
+                        <td>REQ-${bid.requisition_id || 'N/A'}-${bid.item_sl_no || 'N/A'}</td>
+                        <td>${bid.item_name || 'N/A'}</td>
+                        <td>${bid.vendor_name || 'N/A'}</td>
                         <td>${formatCurrency(bid.bid_amount)}</td>
-                        <td><span class="badge bg-${getBadgeColor(bid.bid_status)}">${bid.bid_status}</span></td>
+                        <td><span class="badge bg-${getBadgeColor(bid.bid_status)}">${bid.bid_status || 'N/A'}</span></td>
                         <td>${new Date(bid.submitted_at).toLocaleString()}</td>
                     </tr>
                 `).join('') || `<tr><td colspan="6" class="text-center">No bidding history found.</td></tr>`);
@@ -762,21 +787,21 @@
                 $('#admin-awarded-tbody').html(result.data.map(contract => `
                     <tr>
                         <td><input type="checkbox" class="form-check-input awarded-item-checkbox" data-item-id="${contract.item_id}"></td>
-                        <td>REQ-${contract.requisition_id}-${contract.item_sl_no}</td>
-                        <td>${contract.item_name}</td>
-                        <td>${contract.vendor_name}</td>
+                        <td>REQ-${contract.requisition_id || 'N/A'}-${contract.item_sl_no || 'N/A'}</td>
+                        <td>${contract.item_name || 'N/A'}</td>
+                        <td>${contract.vendor_name || 'N/A'}</td>
                         <td>${formatCurrency(contract.ex_works_rate)}</td>
                         <td>${formatCurrency(contract.freight_rate)}</td>
                         <td><strong>${formatCurrency(contract.awarded_amount)}</strong></td>
                         <td>${new Date(contract.awarded_date).toLocaleDateString()}</td>
-                        <td><div class="btn-group btn-group-sm"><button class="btn btn-info" onclick="openAdminActionModal(${contract.item_id}, '${contract.item_name.replace(/'/g, "\\'")}')">Bids</button><button class="btn btn-danger" onclick="handleSingleReopenBidding(${contract.item_id})">Re-open</button></div></td>
+                        <td><div class="btn-group btn-group-sm"><button class="btn btn-info" onclick="openAdminActionModal(${contract.item_id}, '${contract.item_name ? contract.item_name.replace(/'/g, "\\'") : 'N/A'}')">Bids</button><button class="btn btn-danger" onclick="handleSingleReopenBidding(${contract.item_id})">Re-open</button></div></td>
                     </tr>
                 `).join('') || `<tr><td colspan="9" class="text-center">No awarded contracts found.</td></tr>`);
             }
         }
         
-        async function load_admin_pending_users_view() { const result = await apiCall('/users/pending'); if (result.success) { $('#admin-pending-users-tbody').html(result.data.map(user => `<tr><td>${user.full_name}</td><td>${user.email}</td><td>${user.role}</td><td>${user.company_name || '-'}</td><td>${user.contact_number || '-'}</td><td><button class="btn btn-sm btn-success" onclick="approveUser(${user.temp_id})">Approve</button></td></tr>`).join('') || `<tr><td colspan="6" class="text-center">No pending users.</td></tr>`); } }
-        async function load_admin_user_control_view() { const result = await apiCall('/users'); if(result.success) { $('#admin-users-tbody').html(result.data.map(user => `<tr><td>${user.full_name}</td><td>${user.email}</td><td>${user.role}</td><td>${user.company_name || '-'}</td><td>${user.contact_number || '-'}</td><td>${user.gstin || '-'}</td><td><button class="btn btn-sm btn-primary" onclick='openEditUserModal(${JSON.stringify(user)})'>Edit</button></td></tr>`).join('') || `<tr><td colspan="7" class="text-center">No users found.</td></tr>`); } }
+        async function load_admin_pending_users_view() { const result = await apiCall('/users/pending'); if (result.success) { $('#admin-pending-users-tbody').html(result.data.map(user => `<tr><td>${user.full_name || 'N/A'}</td><td>${user.email || 'N/A'}</td><td>${user.role || 'N/A'}</td><td>${user.company_name || '-'}</td><td>${user.contact_number || '-'}</td><td><button class="btn btn-sm btn-success" onclick="approveUser(${user.temp_id})">Approve</button></td></tr>`).join('') || `<tr><td colspan="6" class="text-center">No pending users.</td></tr>`); } }
+        async function load_admin_user_control_view() { const result = await apiCall('/users'); if(result.success) { $('#admin-users-tbody').html(result.data.map(user => `<tr><td>${user.full_name || 'N/A'}</td><td>${user.email || 'N/A'}</td><td>${user.role || 'N/A'}</td><td>${user.company_name || '-'}</td><td>${user.contact_number || '-'}</td><td>${user.gstin || '-'}</td><td><button class="btn btn-sm btn-primary" onclick='openEditUserModal(${JSON.stringify(user)})'>Edit</button></td></tr>`).join('') || `<tr><td colspan="7" class="text-center">No users found.</td></tr>`); } }
         
         async function load_admin_reports_view() {
             $('#report-apply-filter').off('click').on('click', updateReportView);
@@ -787,33 +812,49 @@
             const result = await apiCall('/vendor/dashboard-stats');
             if (result.success) {
                 const data = result.data;
-                $('#vendor-stats-assigned').text(data.assignedItems);
-                $('#vendor-stats-submitted').text(data.submittedBids);
-                $('#vendor-stats-won').text(data.contractsWon);
-                $('#vendor-stats-needs-bid').text(data.needsBid);
-                $('#vendor-kpi-l1-bids').text(data.l1Bids);
+                $('#vendor-stats-assigned').text(data.assignedItems || '0');
+                $('#vendor-stats-submitted').text(data.submittedBids || '0');
+                $('#vendor-stats-won').text(data.contractsWon || '0');
+                $('#vendor-stats-needs-bid').text(data.needsBid || '0');
+                $('#vendor-kpi-l1-bids').text(data.l1Bids || '0');
                 $('#vendor-kpi-value-won').text(formatCurrency(data.totalWonValue));
                 $('#vendor-kpi-win-rate').text(data.contractsWon > 0 ? `${((data.contractsWon / data.submittedBids) * 100).toFixed(1)}%` : '0%');
                 $('#vendor-kpi-avg-rank').text(data.avgRank ? parseFloat(data.avgRank).toFixed(1) : 'N/A');
 
-                $('#vendor-recent-bids').html(data.recentBids.map(bid => `
-                    <a href="#" class="list-group-item list-group-item-action">
-                        <div class="d-flex w-100 justify-content-between">
-                            <h6 class="mb-1 small">${bid.item_name}</h6>
-                            <span class="badge bg-${getBadgeColor(bid.bid_status)}">${bid.bid_status}</span>
-                        </div>
-                        <p class="mb-1 small text-muted">My Bid: ${formatCurrency(bid.bid_amount)}</p>
-                    </a>
-                `).join('') || '<div class="list-group-item text-center text-muted small">No recent bids.</div>');
+                const recentBidsList = $('#vendor-recent-bids');
+                recentBidsList.empty();
+                if (data.recentBids && data.recentBids.length > 0) {
+                    data.recentBids.forEach(bid => {
+                        recentBidsList.append(`
+                            <a href="#" class="list-group-item list-group-item-action">
+                                <div class="d-flex w-100 justify-content-between">
+                                    <h6 class="mb-1 small">${bid.item_name || 'N/A'}</h6>
+                                    <span class="badge bg-${getBadgeColor(bid.bid_status)}">${bid.bid_status || 'N/A'}</span>
+                                </div>
+                                <p class="mb-1 small text-muted">My Bid: ${formatCurrency(bid.bid_amount)}</p>
+                            </a>
+                        `);
+                    });
+                } else {
+                    recentBidsList.html('<div class="list-group-item text-center text-muted small">No recent bids.</div>');
+                }
 
-                $('#vendor-latest-notifications').html(data.notifications.map(notif => `
-                    <div class="list-group-item">
-                        <div class="d-flex w-100 justify-content-between">
-                            <p class="mb-1 small">${notif.text}</p>
-                        </div>
-                        <small class="text-muted">${formatDate(notif.timestamp, true)}</small>
-                    </div>
-                `).join('') || '<div class="list-group-item text-center text-muted small">No new notifications.</div>');
+                const notificationsFeed = $('#vendor-latest-notifications');
+                notificationsFeed.empty();
+                if (data.notifications && data.notifications.length > 0) {
+                    data.notifications.forEach(notif => {
+                        notificationsFeed.append(`
+                            <div class="list-group-item">
+                                <div class="d-flex w-100 justify-content-between">
+                                    <p class="mb-1 small">${notif.text || 'N/A'}</p>
+                                </div>
+                                <small class="text-muted">${formatDate(notif.timestamp, true)}</small>
+                            </div>
+                        `);
+                    });
+                } else {
+                    notificationsFeed.html('<div class="list-group-item text-center text-muted small">No new notifications.</div>');
+                }
             }
         }
         
@@ -830,11 +871,11 @@
                     const itemRow = `
                         <tr data-item='${JSON.stringify(item)}'>
                             <td>
-                                <strong>${item.item_name}</strong>
+                                <strong>${item.item_name || 'N/A'}</strong>
                                 <br><small class="text-muted">${item.item_code || 'No Code'}</small>
                             </td>
-                            <td>${item.quantity} ${item.unit}</td>
-                            <td>${isBidded ? `<span class="badge bg-${getBadgeColor(item.my_bid_status)}">${item.my_bid_status}</span>` : `<span class="badge bg-warning">Bidding Open</span>`}</td>
+                            <td>${item.quantity || 'N/A'} ${item.unit || 'N/A'}</td>
+                            <td>${isBidded ? `<span class="badge bg-${getBadgeColor(item.my_bid_status)}">${item.my_bid_status || 'N/A'}</span>` : `<span class="badge bg-warning">Bidding Open</span>`}</td>
                             <td>${isBidded && item.my_rank ? `<span class="badge bg-info">L${item.my_rank}</span>` : 'N/A'}</td>
                         </tr>
                     `;
@@ -862,11 +903,11 @@
             if (result.success) {
                 $('#vendor-bids-tbody').html(result.data.map(bid => `
                     <tr>
-                        <td>REQ-${bid.requisition_id}-${bid.item_sl_no}</td>
-                        <td>${bid.item_name}</td>
+                        <td>REQ-${bid.requisition_id || 'N/A'}-${bid.item_sl_no || 'N/A'}</td>
+                        <td>${bid.item_name || 'N/A'}</td>
                         <td>${formatCurrency(bid.bid_amount)}</td>
                         <td>${bid.rank ? `<span class="badge bg-info">L${bid.rank}</span>` : 'N/A'}</td>
-                        <td><span class="badge bg-${getBadgeColor(bid.bid_status)}">${bid.bid_status}</span></td>
+                        <td><span class="badge bg-${getBadgeColor(bid.bid_status)}">${bid.bid_status || 'N/A'}</span></td>
                         <td>${new Date(bid.submitted_at).toLocaleString()}</td>
                     </tr>
                 `).join('') || `<tr><td colspan="6" class="text-center">No bids submitted yet.</td></tr>`);
@@ -875,7 +916,7 @@
         async function load_vendor_awarded_view() {
             const result = await apiCall('/vendor/my-awarded-contracts');
             if (result.success) {
-                $('#vendor-awarded-tbody').html(result.data.map(c => `<tr><td>REQ-${c.requisition_id}-${c.item_sl_no}</td><td>${c.item_name}</td><td>${formatCurrency(c.awarded_amount)}</td><td>${new Date(c.awarded_date).toLocaleDateString()}</td></tr>`).join('') || `<tr><td colspan="4" class="text-center">No contracts awarded yet.</td></tr>`);
+                $('#vendor-awarded-tbody').html(result.data.map(c => `<tr><td>REQ-${c.requisition_id || 'N/A'}-${c.item_sl_no || 'N/A'}</td><td>${c.item_name || 'N/A'}</td><td>${formatCurrency(c.awarded_amount)}</td><td>${new Date(c.awarded_date).toLocaleDateString()}</td></tr>`).join('') || `<tr><td colspan="4" class="text-center">No contracts awarded yet.</td></tr>`);
             }
         }
 
@@ -908,12 +949,12 @@
                     const itemsHTML = req.items.map(item => `
                         <li class="list-group-item">
                             <div class="d-flex w-100 justify-content-between">
-                                <small><strong>${item.item_sl_no}.</strong> ${item.item_name}</small>
-                                <span class="badge bg-${getBadgeColor(item.status)}">${item.status}</span>
+                                <small><strong>${item.item_sl_no || 'N/A'}.</strong> ${item.item_name || 'N/A'}</small>
+                                <span class="badge bg-${getBadgeColor(item.status)}">${item.status || 'N/A'}</span>
                             </div>
-                            ${item.status === 'Awarded' ? `<small class="d-block text-success">Awarded to: ${item.awarded_vendor} for ${formatCurrency(item.awarded_amount)}</small>` : ''}
+                            ${item.status === 'Awarded' ? `<small class="d-block text-success">Awarded to: ${item.awarded_vendor || 'N/A'} for ${formatCurrency(item.awarded_amount)}</small>` : ''}
                         </li>`).join('');
-                    listDiv.append(`<div class="card mb-3"><div class="card-header d-flex justify-content-between"><strong>Req ID: REQ-${req.requisition_id}</strong><span class="badge bg-${getBadgeColor(req.status)}">${req.status}</span></div><ul class="list-group list-group-flush">${itemsHTML}</ul></div>`);
+                    listDiv.append(`<div class="card mb-3"><div class="card-header d-flex justify-content-between"><strong>Req ID: REQ-${req.requisition_id || 'N/A'}</strong><span class="badge bg-${getBadgeColor(req.status)}">${req.status || 'N/A'}</span></div><ul class="list-group list-group-flush">${itemsHTML}</ul></div>`);
                 });
             }
         }
@@ -975,7 +1016,7 @@
                     const chatItem = $(`
                         <a href="#" class="list-group-item list-group-item-action" data-userid="${user.user_id}" data-username="${user.full_name}">
                             <div class="d-flex w-100 justify-content-between">
-                                <h6 class="mb-1">${user.full_name} <small class="text-muted">(${user.role})</small></h6>
+                                <h6 class="mb-1">${user.full_name || 'N/A'} <small class="text-muted">(${user.role || 'N/A'})</small></h6>
                                 ${unreadBadge}
                             </div>
                             <p class="mb-1 small text-muted">${lastMsg}</p>
@@ -1303,9 +1344,9 @@
             if(data.detailedReport.length > 0) {
                 data.detailedReport.forEach(row => {
                     reportTbody.append(`<tr>
-                        <td>REQ-${row.requisition_id}-${row.item_sl_no}</td>
-                        <td>${row.item_name}</td>
-                        <td>${row.vendor_name}</td>
+                        <td>REQ-${row.requisition_id || 'N/A'}-${row.item_sl_no || 'N/A'}</td>
+                        <td>${row.item_name || 'N/A'}</td>
+                        <td>${row.vendor_name || 'N/A'}</td>
                         <td>${formatCurrency(row.awarded_amount)}</td>
                         <td>${formatDate(row.awarded_date)}</td>
                     </tr>`);
@@ -1540,20 +1581,20 @@
                 await apiCall('/admin/dashboard-stats', 'GET', null, false, false).then(result => {
                     if(result.success) {
                         const data = result.data;
-                        $('#stats-active-items').text(data.activeItems);
-                        $('#stats-pending-users').text(data.pendingUsers);
-                        $('#stats-pending-reqs').text(data.pendingRequisitionsCount);
-                        $('#stats-awarded-contracts').text(data.awardedContracts);
+                        $('#stats-active-items').text(data.activeItems || '0');
+                        $('#stats-pending-users').text(data.pendingUsers || '0');
+                        $('#stats-pending-reqs').text(data.pendingRequisitionsCount || '0');
+                        $('#stats-awarded-contracts').text(data.awardedContracts || '0');
                     }
                 });
             } else if (currentView === 'vendor-dashboard-view') {
                 await apiCall('/vendor/dashboard-stats', 'GET', null, false, false).then(result => {
                     if(result.success) {
                         const data = result.data;
-                        $('#vendor-stats-assigned').text(data.assignedItems);
-                        $('#vendor-stats-submitted').text(data.submittedBids);
-                        $('#vendor-stats-won').text(data.contractsWon);
-                        $('#vendor-stats-needs-bid').text(data.needsBid);
+                        $('#vendor-stats-assigned').text(data.assignedItems || '0');
+                        $('#vendor-stats-submitted').text(data.submittedBids || '0');
+                        $('#vendor-stats-won').text(data.contractsWon || '0');
+                        $('#vendor-stats-needs-bid').text(data.needsBid || '0');
                     }
                 });
             }
