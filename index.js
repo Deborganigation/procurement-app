@@ -56,7 +56,6 @@ const storage = new CloudinaryStorage({
     params: {
         folder: 'procurement_uploads',
         upload_preset: 'ml_default',
-        // FIX for Issue 5: resource_type 'auto' is already correctly set to handle different file types.
         resource_type: 'auto',
         allowed_formats: ['jpg', 'jpeg', 'png', 'pdf'],
         public_id: (req, file) => `${Date.now()}-${file.originalname.replace(/\s/g, '_')}`,
@@ -222,7 +221,8 @@ app.get('/api/requisitions/my-status', authenticateToken, async (req, res, next)
 // --- 3. VENDOR FEATURES ---
 app.get('/api/requirements/assigned', authenticateToken, async (req, res, next) => {
     try {
-        // Fix for Issue 1: Corrected SQL query to be compatible with ONLY_FULL_GROUP_BY
+        // FIX for Issue 1: Corrected SQL query to be compatible with ONLY_FULL_GROUP_BY. 
+        // All non-aggregated columns in the SELECT list are now part of the GROUP BY clause.
         const query = `
             SELECT 
                 ri.item_name, 
@@ -246,8 +246,9 @@ app.get('/api/requirements/assigned', authenticateToken, async (req, res, next) 
         for (const item of items) {
             item.my_bid_amount = (parseFloat(item.my_ex_works_rate || 0) + parseFloat(item.my_freight_rate || 0)) * parseFloat(item.quantity);
             if (item.my_bid_amount > 0) {
+                // FIX for SQL Syntax Error: Enclosed 'rank' alias in backticks because it's a reserved keyword.
                 const [rankResult] = await dbPool.query(
-                    `SELECT COUNT(DISTINCT vendor_id) + 1 as rank FROM bids WHERE item_id IN (${item.original_item_ids}) AND bid_amount < ?`,
+                    `SELECT COUNT(DISTINCT vendor_id) + 1 as \`rank\` FROM bids WHERE item_id IN (${item.original_item_ids}) AND bid_amount < ?`,
                     [item.my_bid_amount]
                 );
                 item.my_rank = rankResult[0].rank;
@@ -391,7 +392,7 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
         const noBidsQuery = "SELECT COUNT(DISTINCT ri.item_id) as count FROM requisition_items ri LEFT JOIN bids b ON ri.item_id = b.item_id WHERE ri.status = 'Active' AND b.bid_id IS NULL";
         const attentionItemsQuery = "SELECT ri.item_id, ri.item_name, ri.requisition_id, ri.item_sl_no FROM requisition_items ri LEFT JOIN bids b ON ri.item_id = b.item_id WHERE ri.status = 'Active' AND b.bid_id IS NULL GROUP BY ri.item_id LIMIT 5";
         
-        // Fix for Issue 2: The query itself is correct. The frontend logic will handle empty results gracefully.
+        // FIX for Issue 2: The query itself is correct. The frontend logic handles empty results gracefully.
         const activityQuery = `
             SELECT
                 DATE_FORMAT(all_dates.date, '%Y-%m-%d') AS date,
@@ -601,7 +602,7 @@ app.get('/api/admin/awarded-contracts', authenticateToken, isAdmin, async (req, 
     }
 });
 
-// Fix for Issue 3: Corrected parameter passing for KPI query and added formatted date for reports.
+// FIX for Issue 3: Corrected parameter passing for KPI query and added formatted date for reports.
 app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res, next) => {
     try {
         const { startDate, endDate } = req.body;
@@ -638,7 +639,7 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
         const categorySpendQuery = `SELECT item_code, SUM(awarded_amount) as total FROM awarded_contracts ac ${dateFilter} GROUP BY item_code HAVING item_code IS NOT NULL ORDER BY total DESC LIMIT 5`;
 
         // --- Detailed Report Query ---
-        // Fix for Issue 3: Format the date on the server side to prevent "Invalid Date" on the client.
+        // FIX for Issue 3: Format the date on the server side to prevent "Invalid Date" on the client.
         const detailedReportQuery = `
             SELECT 
                 ac.awarded_amount, DATE_FORMAT(ac.awarded_date, '%Y-%m-%d') as awarded_date,
