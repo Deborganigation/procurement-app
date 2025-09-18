@@ -55,6 +55,7 @@ const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
     params: {
         folder: 'procurement_uploads',
+        upload_preset: 'ml_default', // ADDED THIS LINE TO FORCE CORRECT PRESET
         allowed_formats: ['jpg', 'jpeg', 'png', 'pdf'],
         public_id: (req, file) => `${Date.now()}-${file.originalname.replace(/\s/g, '_')}`,
     },
@@ -619,7 +620,7 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
                 SUM(ac.awarded_amount) AS totalSpend,
                 (SELECT COUNT(DISTINCT vendor_id) FROM awarded_contracts ac ${dateFilter}) as participatingVendors,
                 (SELECT COUNT(*) FROM users WHERE role='Vendor' AND is_active=1) as totalVendors,
-                (SELECT COUNT(*) FROM awarded_contracts ac ${dateFilter} AND awarded_amount <= (SELECT MIN(bid_amount) FROM bids WHERE item_id = ac.item_id)) as l1Awards,
+                (SELECT COUNT(*) FROM awarded_contracts ac ${dateFilter ? `${dateFilter} AND` : 'WHERE'} awarded_amount <= (SELECT MIN(bid_amount) FROM bids WHERE item_id = ac.item_id)) as l1Awards,
                 (SELECT COUNT(*) FROM awarded_contracts ac ${dateFilter}) as totalAwards
             FROM awarded_contracts ac
             ${dateFilter}`;
@@ -1004,7 +1005,6 @@ app.get('/api/notifications', authenticateToken, async (req, res, next) => {
         const { userId, role } = req.user;
         let notifications = [];
 
-        // All users can receive message notifications
         const [msgCount] = await dbPool.query("SELECT COUNT(*) as count FROM messages WHERE recipient_id = ? AND is_read = 0", [userId]);
         if (msgCount[0].count > 0) {
             notifications.push({ text: `You have ${msgCount[0].count} new message(s).`, view: 'messaging-view' });
