@@ -127,6 +127,7 @@
         .message-bubble .ticks { font-size: 0.8rem; margin-left: 5px; }
         .ticks .fa-check { color: #888; }
         .ticks .fa-check-double.read { color: #4fc3f7; }
+        .chart-container { height: 300px; width: 100%; }
 
         @media (max-width: 992px) {
             .sidebar { transform: translateX(-100%); width: 280px; }
@@ -185,7 +186,7 @@
                     <div class="nav-link-text"><i class="fas fa-trophy"></i> <span>Awarded Contracts</span></div>
                 </a>
                 <a class="nav-link admin-nav-item" data-view="admin-reports-view" onclick="navigateTo(this.dataset.view)">
-                    <div class="nav-link-text"><i class="fas fa-chart-pie"></i> <span>Reports & Analytics</span></div>
+                    <div class="nav-link-text"><i class="fas fa-chart-line"></i> <span>Reports & Analytics</span></div>
                 </a>
                 <a class="nav-link admin-nav-item" data-view="admin-pending-users-view" onclick="navigateTo(this.dataset.view)">
                     <div class="nav-link-text"><i class="fas fa-user-check"></i> <span>User Approvals</span></div>
@@ -196,16 +197,16 @@
                 </a>
                 
                 <a class="nav-link vendor-nav-item" data-view="vendor-dashboard-view" onclick="navigateTo(this.dataset.view)">
-                     <div class="nav-link-text"><i class="fas fa-tachometer-alt"></i> <span>Dashboard</span></div>
+                    <div class="nav-link-text"><i class="fas fa-tachometer-alt"></i> <span>Dashboard</span></div>
                 </a>
                 <a class="nav-link vendor-nav-item" data-view="vendor-requirements-view" onclick="navigateTo(this.dataset.view)">
-                     <div class="nav-link-text"><i class="fas fa-clipboard-list"></i> <span>My Open Requirements</span></div>
+                    <div class="nav-link-text"><i class="fas fa-clipboard-list"></i> <span>My Open Requirements</span></div>
                 </a>
                 <a class="nav-link vendor-nav-item" data-view="vendor-my-bids-view" onclick="navigateTo(this.dataset.view)">
-                     <div class="nav-link-text"><i class="fas fa-gavel"></i> <span>My Bidding History</span></div>
+                    <div class="nav-link-text"><i class="fas fa-gavel"></i> <span>My Bidding History</span></div>
                 </a>
                 <a class="nav-link vendor-nav-item" data-view="vendor-awarded-view" onclick="navigateTo(this.dataset.view)">
-                     <div class="nav-link-text"><i class="fas fa-trophy"></i> <span>My Awarded Contracts</span></div>
+                    <div class="nav-link-text"><i class="fas fa-trophy"></i> <span>My Awarded Contracts</span></div>
                 </a>
                 
                 <a class="nav-link user-nav-item" data-view="user-create-req-view" onclick="navigateTo(this.dataset.view)">
@@ -300,8 +301,36 @@
                     <div class="col-lg-3 col-md-6"><div class="stat-card bg-gradient-info" onclick="navigateTo('admin-awarded-view')"><div><h5 class="mb-0">Items Awarded</h5><p class="display-4" id="stats-awarded-contracts">--</p></div><i class="fas fa-trophy stat-icon"></i></div></div>
                 </div>
                 <div class="row g-4">
-                    <div class="col-lg-6"><div class="card h-100"><div class="card-header"><h5 class="mb-0">Latest Requisitions</h5><button class="btn btn-sm btn-outline-primary float-end" onclick="navigateTo('admin-pending-reqs-view')">View All</button></div><div class="card-body p-0"><div class="list-group list-group-flush" id="admin-latest-reqs-list"></div></div></div></div>
-                    <div class="col-lg-6"><div class="card h-100"><div class="card-header"><h5 class="mb-0">Notifications Feed</h5></div><div class="card-body p-0"><div class="list-group list-group-flush" id="admin-notifications-feed"></div></div></div></div>
+                    <div class="col-lg-6">
+                        <div class="card h-100">
+                            <div class="card-header"><h5 class="mb-0">Requisition Trends</h5></div>
+                            <div class="card-body">
+                                <div class="chart-container"><canvas id="adminRequisitionChart"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="card h-100">
+                            <div class="card-header"><h5 class="mb-0">Vendor Bidding Activity</h5></div>
+                            <div class="card-body">
+                                <div class="chart-container"><canvas id="adminVendorBiddingChart"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row g-4 mt-4">
+                    <div class="col-lg-6">
+                        <div class="card h-100">
+                            <div class="card-header"><h5 class="mb-0">Latest Requisitions</h5><button class="btn btn-sm btn-outline-primary float-end" onclick="navigateTo('admin-pending-reqs-view')">View All</button></div>
+                            <div class="card-body p-0"><div class="list-group list-group-flush" id="admin-latest-reqs-list"></div></div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="card h-100">
+                            <div class="card-header"><h5 class="mb-0">Notifications Feed</h5></div>
+                            <div class="card-body p-0"><div class="list-group list-group-flush" id="admin-notifications-feed"></div></div>
+                        </div>
+                    </div>
                 </div>`,
             'admin-pending-reqs-view': `<div class="card"><div class="card-header"><h5 class="mb-0">Pending Requisition Approvals</h5></div><div class="card-body"><div class="accordion" id="pending-reqs-accordion"></div></div></div>`,
             'admin-requirements-view': `<div class="card">
@@ -324,15 +353,45 @@
                 </div>
                 <div class="card-body table-responsive"><table class="table table-hover align-middle" id="admin-awarded-table"><thead class="table-light"><tr><th><input type="checkbox" onchange="toggleAllInParent(this, 'awarded-item-checkbox')"></th><th>Req. ID</th><th>Item Name</th><th>Vendor</th><th>Ex-works (₹)</th><th>Freight (₹)</th><th>Total (₹)</th><th>Date</th><th>Actions</th></tr></thead><tbody id="admin-awarded-tbody"></tbody></table></div></div>`,
             'admin-reports-view': `
-                <div class="card mb-4"><div class="card-body py-3"><div class="row g-3 align-items-center">
-                    <div class="col-md-5"><label class="form-label form-label-sm">Start Date</label><input type="date" id="report-start-date" class="form-control form-control-sm"></div>
-                    <div class="col-md-5"><label class="form-label form-label-sm">End Date</label><input type="date" id="report-end-date" class="form-control form-control-sm"></div>
-                    <div class="col-md-2 d-grid"><button id="report-apply-filter" class="btn btn-primary btn-sm mt-md-3">Apply Filter</button></div>
-                </div></div></div>
-                <h5 class="mb-3">Detailed Awarded Contracts Report</h5>
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Analytics Filters</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3 align-items-center">
+                            <div class="col-md-5"><label class="form-label form-label-sm">Start Date</label><input type="date" id="report-start-date" class="form-control form-control-sm"></div>
+                            <div class="col-md-5"><label class="form-label form-label-sm">End Date</label><input type="date" id="report-end-date" class="form-control form-control-sm"></div>
+                            <div class="col-md-2 d-grid"><button id="report-apply-filter" class="btn btn-primary btn-sm mt-md-3">Apply Filter</button></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row g-4 mb-4">
+                    <div class="col-md-6 col-lg-3"><div class="kpi-card-small"><div class="kpi-icon bg-gradient-primary"><i class="fas fa-rupee-sign"></i></div><div class="kpi-info"><h6>Total Spend</h6><p id="report-total-spend">--</p></div></div></div>
+                    <div class="col-md-6 col-lg-3"><div class="kpi-card-small"><div class="kpi-icon bg-gradient-success"><i class="fas fa-percent"></i></div><div class="kpi-info"><h6>L1 Award Rate</h6><p id="report-l1-award-rate">--</p></div></div></div>
+                    <div class="col-md-6 col-lg-3"><div class="kpi-card-small"><div class="kpi-icon bg-gradient-info"><i class="fas fa-check-circle"></i></div><div class="kpi-info"><h6>Items Awarded</h6><p id="report-awarded-count">--</p></div></div></div>
+                    <div class="col-md-6 col-lg-3"><div class="kpi-card-small"><div class="kpi-icon bg-gradient-warning"><i class="fas fa-history"></i></div><div class="kpi-info"><h6>Avg. Approval Time</h6><p id="report-avg-approval-time">--</p></div></div></div>
+                </div>
+                <div class="row g-4">
+                    <div class="col-lg-6">
+                        <div class="card h-100">
+                            <div class="card-header"><h5 class="mb-0">Spend by Vendor</h5></div>
+                            <div class="card-body">
+                                <div class="chart-container"><canvas id="vendorSpendChart"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="card h-100">
+                            <div class="card-header"><h5 class="mb-0">Awarded Value Over Time</h5></div>
+                            <div class="card-body">
+                                <div class="chart-container"><canvas id="awardedValueChart"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div class="card mt-4">
                     <div class="card-header d-flex justify-content-between">
-                        <h6 class="mb-0">Filtered Report Data</h6>
+                        <h6 class="mb-0">Detailed Awarded Contracts Report</h6>
                         <button class="btn btn-sm btn-outline-success" onclick="downloadDetailedReport()"><i class="fas fa-download me-2"></i>Download Full Report</button>
                     </div>
                     <div class="card-body table-responsive">
@@ -353,10 +412,32 @@
                     <div class="col-lg-3 col-md-6"><div class="stat-card bg-gradient-warning" onclick="navigateTo('vendor-requirements-view')"><div><h5 class="mb-0">Needs My Bid</h5><p class="display-4" id="vendor-stats-needs-bid">--</p></div><i class="fas fa-edit stat-icon"></i></div></div>
                 </div>
                 <div class="row g-4">
+                    <div class="col-lg-6">
+                        <div class="card h-100">
+                            <div class="card-header"><h5 class="mb-0">My Bidding Trends</h5></div>
+                            <div class="card-body">
+                                <div class="chart-container"><canvas id="vendorBiddingChart"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="card h-100">
+                            <div class="card-header"><h5 class="mb-0">My Performance Score</h5></div>
+                            <div class="card-body">
+                                <div class="row g-3">
+                                    <div class="col-6"><div class="kpi-card-small"><div class="kpi-icon bg-gradient-primary"><i class="fas fa-tachometer-alt"></i></div><div class="kpi-info"><h6>L1 Win Rate</h6><p id="vendor-kpi-win-rate">--</p></div></div></div>
+                                    <div class="col-6"><div class="kpi-card-small"><div class="kpi-icon bg-gradient-success"><i class="fas fa-handshake"></i></div><div class="kpi-info"><h6>Total Value Won</h6><p id="vendor-kpi-value-won">--</p></div></div></div>
+                                    <div class="col-6"><div class="kpi-card-small"><div class="kpi-icon bg-gradient-warning"><i class="fas fa-balance-scale"></i></div><div class="kpi-info"><h6>Avg. Bid Rank</h6><p id="vendor-kpi-avg-rank">--</p></div></div></div>
+                                    <div class="col-6"><div class="kpi-card-small"><div class="kpi-icon bg-gradient-danger"><i class="fas fa-chart-line"></i></div><div class="kpi-info"><h6>L1 Bid Count</h6><p id="vendor-kpi-l1-bids">--</p></div></div></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row g-4 mt-4">
                     <div class="col-lg-6"><div class="card h-100"><div class="card-header"><h5 class="mb-0">My Recent Bids</h5><button class="btn btn-sm btn-outline-primary float-end" onclick="navigateTo('vendor-my-bids-view')">View All</button></div><div class="card-body p-0"><div class="list-group list-group-flush" id="vendor-recent-bids"></div></div></div></div>
                     <div class="col-lg-6"><div class="card h-100"><div class="card-header"><h5 class="mb-0">Latest Notifications</h5></div><div class="card-body p-0"><div class="list-group list-group-flush" id="vendor-latest-notifications"></div></div></div></div>
-                </div>
-                `,
+                </div>`,
             'vendor-requirements-view': `<div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                         <h5 class="mb-0">My Open Requirements for Bidding</h5>
@@ -453,7 +534,7 @@
                 if (response.status === 401 || (response.status === 403 && !isFormData)) { 
                     const errorData = await response.clone().json().catch(() => ({}));
                     if (errorData.message && errorData.message.includes('maximum of 3 bids')) {
-                         throw new Error(errorData.message);
+                          throw new Error(errorData.message);
                     }
                     showToast('Session expired or forbidden. Please log in again.', 'error');
                     handleLogout();
@@ -570,28 +651,15 @@
                 $('#stats-pending-users').text(data.pendingUsers);
                 $('#stats-pending-reqs').text(data.pendingRequisitionsCount);
                 $('#stats-awarded-contracts').text(data.awardedContracts);
-                $('#stats-reqs-today').text(data.reqsToday);
-                $('#stats-active-vendors').text(data.activeVendors);
-                $('#stats-avg-approval-time').text(data.avgApprovalTime > 0 ? `${data.avgApprovalTime} Days` : 'N/A');
-                $('#stats-no-bids').text(data.itemsWithNoBids);
                 
-                $('#admin-attention-items').html(data.attentionItems.map(item => `
-                    <a href="#" onclick="openAdminActionModal(${item.item_id}, '${item.item_name.replace(/'/g, "\\'")}')" class="list-group-item list-group-item-action">
-                        <div class="d-flex w-100 justify-content-between">
-                            <h6 class="mb-1 small">${item.item_name}</h6>
-                            <span class="badge bg-danger">No Bids</span>
-                        </div>
-                        <p class="mb-1 small text-muted">Req ID: REQ-${item.requisition_id}-${item.item_sl_no}</p>
-                    </a>`).join('') || '<div class="list-group-item text-center text-muted small p-3">No high-priority items.</div>');
-
+                // Latest Requisitions
                 const latestReqsList = $('#admin-latest-reqs-list');
-                const reqs = await apiCall('/admin/latest-requisitions', 'GET', null, false, false);
-                if (reqs.success && reqs.data.length > 0) {
-                    latestReqsList.html(reqs.data.map(req => `
+                if (data.latestRequisitions && data.latestRequisitions.length > 0) {
+                    latestReqsList.html(data.latestRequisitions.map(req => `
                         <div class="list-group-item list-group-item-action">
                             <div class="d-flex w-100 justify-content-between">
                                 <h6 class="mb-1">REQ-${req.requisition_id}</h6>
-                                <small>${new Date(req.created_at).toLocaleDateString()}</small>
+                                <small>${formatDate(req.created_at)}</small>
                             </div>
                             <p class="mb-1 small">by ${req.creator_name}</p>
                             <small class="text-muted">${req.item_count} items - ${req.status}</small>
@@ -599,6 +667,21 @@
                     `).join(''));
                 } else {
                     latestReqsList.html('<div class="list-group-item text-center text-muted">No recent requisitions.</div>');
+                }
+
+                // Notifications Feed
+                const notificationsFeed = $('#admin-notifications-feed');
+                if (data.notifications && data.notifications.length > 0) {
+                    notificationsFeed.html(data.notifications.map(notif => `
+                        <div class="list-group-item">
+                            <div class="d-flex w-100 justify-content-between">
+                                <p class="mb-1 small">${notif.text}</p>
+                            </div>
+                            <small class="text-muted">${formatDate(notif.timestamp, true)}</small>
+                        </div>
+                    `).join(''));
+                } else {
+                    notificationsFeed.html('<div class="list-group-item text-center text-muted">No new notifications.</div>');
                 }
             }
         }
@@ -621,7 +704,7 @@
                 
                 accordion.append(`
                     <div class="accordion-item">
-                        <h2 class="accordion-header"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${reqId}">Req ID: REQ-${reqId} (By: ${new Date(req.created_at).toLocaleDateString()}) - ${reqItems.length} items</button></h2>
+                        <h2 class="accordion-header"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${reqId}">Req ID: REQ-${reqId} (By: ${req.creator}) - ${reqItems.length} items</button></h2>
                         <div id="collapse-${reqId}" class="accordion-collapse collapse" data-bs-parent="#pending-reqs-accordion">
                             <div class="accordion-body">
                                 <h6>Select items to approve:</h6><ul class="list-group mb-3">${itemsHTML}</ul>
@@ -708,8 +791,10 @@
                 $('#vendor-stats-submitted').text(data.submittedBids);
                 $('#vendor-stats-won').text(data.contractsWon);
                 $('#vendor-stats-needs-bid').text(data.needsBid);
-                $('#vendor-stats-l1-bids').text(data.l1Bids);
-                $('#vendor-stats-won-value').text(formatCurrency(data.totalWonValue));
+                $('#vendor-kpi-l1-bids').text(data.l1Bids);
+                $('#vendor-kpi-value-won').text(formatCurrency(data.totalWonValue));
+                $('#vendor-kpi-win-rate').text(data.contractsWon > 0 ? `${((data.contractsWon / data.submittedBids) * 100).toFixed(1)}%` : '0%');
+                $('#vendor-kpi-avg-rank').text(data.avgRank ? parseFloat(data.avgRank).toFixed(1) : 'N/A');
 
                 $('#vendor-recent-bids').html(data.recentBids.map(bid => `
                     <a href="#" class="list-group-item list-group-item-action">
@@ -723,8 +808,10 @@
 
                 $('#vendor-latest-notifications').html(data.notifications.map(notif => `
                     <div class="list-group-item">
-                        <p class="mb-1 small">${notif.text}</p>
-                        <small class="text-muted">${new Date(notif.timestamp).toLocaleString()}</small>
+                        <div class="d-flex w-100 justify-content-between">
+                            <p class="mb-1 small">${notif.text}</p>
+                        </div>
+                        <small class="text-muted">${formatDate(notif.timestamp, true)}</small>
                     </div>
                 `).join('') || '<div class="list-group-item text-center text-muted small">No new notifications.</div>');
             }
@@ -780,7 +867,7 @@
                         <td>${formatCurrency(bid.bid_amount)}</td>
                         <td>${bid.rank ? `<span class="badge bg-info">L${bid.rank}</span>` : 'N/A'}</td>
                         <td><span class="badge bg-${getBadgeColor(bid.bid_status)}">${bid.bid_status}</span></td>
-                        <td>${new Date(bid.submitted_at).toLocaleDateString()}</td>
+                        <td>${new Date(bid.submitted_at).toLocaleString()}</td>
                     </tr>
                 `).join('') || `<tr><td colspan="6" class="text-center">No bids submitted yet.</td></tr>`);
             }
@@ -1207,9 +1294,9 @@
             const data = result.data;
             
             $('#report-total-spend').text(formatCurrency(data.kpis.totalSpend));
-            $('#report-cost-savings').text(formatCurrency(data.kpis.totalSavings));
-            $('#report-vendor-participation').text(`${data.kpis.vendorParticipationRate.toFixed(1)}%`);
             $('#report-l1-award-rate').text(`${data.kpis.l1AwardRate.toFixed(1)}%`);
+            $('#report-awarded-count').text(data.kpis.awardedItemsCount);
+            $('#report-avg-approval-time').text(data.kpis.avgApprovalTime > 0 ? `${data.kpis.avgApprovalTime.toFixed(1)} Days` : 'N/A');
 
             const reportTbody = $('#detailed-report-tbody');
             reportTbody.empty();
@@ -1220,12 +1307,35 @@
                         <td>${row.item_name}</td>
                         <td>${row.vendor_name}</td>
                         <td>${formatCurrency(row.awarded_amount)}</td>
-                        <td>${new Date(row.awarded_date).toLocaleDateString()}</td>
+                        <td>${formatDate(row.awarded_date)}</td>
                     </tr>`);
                 });
             } else {
                 reportTbody.append(`<tr><td colspan="5" class="text-center text-muted p-3">No data for the selected period.</td></tr>`);
             }
+
+            // Charts
+            const vendorSpendData = data.charts.vendorSpend;
+            const awardedValueData = data.charts.awardedValue;
+            createChart('vendorSpendChart', 'pie', {
+                labels: Object.keys(vendorSpendData),
+                datasets: [{
+                    data: Object.values(vendorSpendData),
+                    backgroundColor: ['#5E72E4', '#2DCE89', '#FB6340', '#11CDEF', '#F5365C', '#8898AA'],
+                }]
+            }, { responsive: true, maintainAspectRatio: false });
+
+            createChart('awardedValueChart', 'line', {
+                labels: Object.keys(awardedValueData),
+                datasets: [{
+                    label: 'Awarded Value (₹)',
+                    data: Object.values(awardedValueData),
+                    borderColor: '#5E72E4',
+                    backgroundColor: 'rgba(94, 114, 228, 0.2)',
+                    fill: true,
+                    tension: 0.3
+                }]
+            }, { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } });
         }
         
         async function sendConsolidatedAwardEmails(winningBids) {
@@ -1433,12 +1543,34 @@
                         $('#stats-active-items').text(data.activeItems);
                         $('#stats-pending-users').text(data.pendingUsers);
                         $('#stats-pending-reqs').text(data.pendingRequisitionsCount);
-                        $('#stats-no-bids').text(data.itemsWithNoBids);
+                        $('#stats-awarded-contracts').text(data.awardedContracts);
+                    }
+                });
+            } else if (currentView === 'vendor-dashboard-view') {
+                await apiCall('/vendor/dashboard-stats', 'GET', null, false, false).then(result => {
+                    if(result.success) {
+                        const data = result.data;
+                        $('#vendor-stats-assigned').text(data.assignedItems);
+                        $('#vendor-stats-submitted').text(data.submittedBids);
+                        $('#vendor-stats-won').text(data.contractsWon);
+                        $('#vendor-stats-needs-bid').text(data.needsBid);
                     }
                 });
             }
             await fetchNotifications();
             await fetchSidebarCounts();
+        }
+        
+        function formatDate(dateString, includeTime = false) {
+            if (!dateString) return 'N/A';
+            const date = new Date(dateString);
+            if (isNaN(date.getTime())) return 'Invalid Date';
+            const options = { year: 'numeric', month: 'short', day: 'numeric' };
+            if (includeTime) {
+                options.hour = '2-digit';
+                options.minute = '2-digit';
+            }
+            return date.toLocaleDateString('en-US', options);
         }
 
     </script>
