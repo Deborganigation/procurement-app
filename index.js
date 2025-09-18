@@ -221,8 +221,6 @@ app.get('/api/requisitions/my-status', authenticateToken, async (req, res, next)
 // --- 3. VENDOR FEATURES ---
 app.get('/api/requirements/assigned', authenticateToken, async (req, res, next) => {
     try {
-        // FIX for Issue 1: Corrected SQL query to be compatible with ONLY_FULL_GROUP_BY.
-        // The alias `rank` is now enclosed in backticks to fix the syntax error.
         const query = `
             SELECT
                 ri.item_name,
@@ -246,7 +244,6 @@ app.get('/api/requirements/assigned', authenticateToken, async (req, res, next) 
         for (const item of items) {
             item.my_bid_amount = (parseFloat(item.my_ex_works_rate || 0) + parseFloat(item.my_freight_rate || 0)) * parseFloat(item.quantity);
             if (item.my_bid_amount > 0) {
-                // FIX for SQL Syntax Error: Enclosed 'rank' alias in backticks.
                 const [rankResult] = await dbPool.query(
                     `SELECT COUNT(DISTINCT vendor_id) + 1 as \`rank\` FROM bids WHERE item_id IN (${item.original_item_ids}) AND bid_amount < ?`,
                     [item.my_bid_amount]
@@ -272,17 +269,15 @@ app.post('/api/bids', authenticateToken, async (req, res, next) => {
         const { bids } = req.body;
         
         await connection.beginTransaction();
+        const invalidBids = [];
 
         for (const bid of bids) {
             const originalItemIds = bid.original_item_ids.split(',');
-            // Fix for issue: Improved bulk bidding logic on the backend.
             const [[countResult]] = await connection.query('SELECT COUNT(*) as count FROM bidding_history_log WHERE item_id = ? AND vendor_id = ?', [originalItemIds[0], req.user.userId]);
             
-            // This is the server-side check. The frontend will now handle the error gracefully.
             if (countResult.count >= 3) {
-                 // Do not rollback, let the other bids be processed. Just return a specific error.
-                 await connection.commit();
-                 return res.status(403).json({ success: false, message: `You have reached the maximum of 3 bids for item ${bid.item_name}.` });
+                 invalidBids.push(bid.item_name);
+                 continue; // Skip this bid and continue to the next one
             }
 
             for (const itemId of originalItemIds) {
@@ -297,7 +292,11 @@ app.post('/api/bids', authenticateToken, async (req, res, next) => {
             }
         }
         await connection.commit();
-        res.json({ success: true, message: 'Bids submitted successfully!' });
+        if (invalidBids.length > 0) {
+            res.status(200).json({ success: true, message: `Some bids were skipped. You have reached the max bids for: ${invalidBids.join(', ')}. Other bids were submitted successfully.` });
+        } else {
+            res.json({ success: true, message: 'Bids submitted successfully!' });
+        }
     } catch (error) {
         if(connection) await connection.rollback();
         next(error);
@@ -314,19 +313,19 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
         const wonQuery = "SELECT COUNT(*) as count, SUM(awarded_amount) as totalValue FROM awarded_contracts WHERE vendor_id = ?";
         const needsBidQuery = "SELECT COUNT(DISTINCT ri.item_code) as count FROM requisition_items ri JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id WHERE ra.vendor_id = ? AND ri.status = 'Active' AND ri.item_id NOT IN (SELECT item_id FROM bids WHERE vendor_id = ?)";
         const l1BidsQuery = "SELECT COUNT(DISTINCT b.item_id) as count FROM bids b WHERE b.vendor_id = ? AND b.bid_amount = (SELECT MIN(bid_amount) FROM bids WHERE item_id = b.item_id)";
-        const bidStatusQuery = "SELECT bid_status, COUNT(*) as count FROM bids WHERE vendor_id = ? GROUP BY bid_status";
-        const recentItemsQuery = `SELECT ri.item_name, ri.requisition_id, ri.item_sl_no, ra.assigned_at FROM requisition_items ri JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id WHERE ra.vendor_id = ? AND ri.status = 'Active' ORDER BY ra.assigned_at DESC LIMIT 5`;
+        const recentBidsQuery = `SELECT b.bid_amount, b.bid_status, ri.item_name FROM bids b JOIN requisition_items ri ON b.item_id = ri.item_id WHERE b.vendor_id = ? ORDER BY b.submitted_at DESC LIMIT 5`;
 
         const [
-            [[assigned]], [[submitted]], [[won]], [[needsBid]], [[l1Bids]], bidStatus, recentItems
+            [[assigned]], [[submitted]], [[won]], [[needsBid]], [[l1Bids]], recentBids, notifications
         ] = await Promise.all([
             dbPool.query(assignedQuery, [vendorId]),
             dbPool.query(submittedQuery, [vendorId]),
             dbPool.query(wonQuery, [vendorId]),
             dbPool.query(needsBidQuery, [vendorId, vendorId]),
             dbPool.query(l1BidsQuery, [vendorId]),
-            dbPool.query(bidStatusQuery, [vendorId]),
-            dbPool.query(recentItemsQuery, [vendorId])
+            dbPool.query(recentBidsQuery, [vendorId]),
+            // Assuming you have a notifications table for vendor-specific notifications
+            dbPool.query(`SELECT 'New Item Assigned' as text, NOW() as timestamp, 'vendor-requirements-view' as view FROM requisition_assignments ra WHERE ra.vendor_id = ? AND ra.assigned_at > DATE_SUB(NOW(), INTERVAL 1 DAY) UNION ALL SELECT 'Contract Awarded' as text, awarded_date as timestamp, 'vendor-awarded-view' as view FROM awarded_contracts WHERE vendor_id = ? ORDER BY timestamp DESC LIMIT 5`, [vendorId, vendorId])
         ]);
 
         res.json({
@@ -338,11 +337,8 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
                 totalWonValue: won.totalValue || 0,
                 needsBid: needsBid.count,
                 l1Bids: l1Bids.count,
-                bidStatusChart: {
-                    labels: bidStatus.map(s => s.bid_status),
-                    data: bidStatus.map(s => s.count)
-                },
-                recentItems
+                recentBids: recentBids,
+                notifications: notifications
             }
         });
     } catch (error) {
@@ -393,66 +389,57 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
         const reqsTodayQuery = "SELECT COUNT(*) as count FROM requisitions WHERE DATE(created_at) = CURDATE()";
         const activeVendorsQuery = "SELECT COUNT(*) as count FROM users WHERE role = 'Vendor' AND is_active = 1";
         const avgApprovalTimeQuery = "SELECT AVG(DATEDIFF(r.approved_at, r.created_at)) as avg_days FROM requisitions r WHERE r.status = 'Processed' AND r.approved_at IS NOT NULL";
-
-        const noBidsQuery = "SELECT COUNT(DISTINCT ri.item_id) as count FROM requisition_items ri LEFT JOIN bids b ON ri.item_id = b.item_id WHERE ri.status = 'Active' AND b.bid_id IS NULL";
-        const attentionItemsQuery = "SELECT ri.item_id, ri.item_name, ri.requisition_id, ri.item_sl_no FROM requisition_items ri LEFT JOIN bids b ON ri.item_id = b.item_id WHERE ri.status = 'Active' AND b.bid_id IS NULL GROUP BY ri.item_id LIMIT 5";
-
-        // FIX for Issue 2: The query is fine; frontend handles empty results.
-        const activityQuery = `
-            SELECT
-                DATE_FORMAT(all_dates.date, '%Y-%m-%d') AS date,
-                COALESCE(req_counts.count, 0) AS requisitions,
-                COALESCE(bid_counts.count, 0) AS bids
-            FROM (
-                SELECT CURDATE() - INTERVAL (a.a) DAY as date
-                FROM (SELECT 0 AS a UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6) AS a
-            ) all_dates
-            LEFT JOIN (
-                SELECT DATE(created_at) as day, COUNT(*) as count
-                FROM requisitions
-                WHERE created_at >= CURDATE() - INTERVAL 6 DAY
-                GROUP BY day
-            ) req_counts ON all_dates.date = req_counts.day
-            LEFT JOIN (
-                SELECT DATE(submitted_at) as day, COUNT(*) as count
-                FROM bidding_history_log
-                WHERE submitted_at >= CURDATE() - INTERVAL 6 DAY
-                GROUP BY day
-            ) bid_counts ON all_dates.date = bid_counts.day
-            ORDER BY all_dates.date ASC;
-        `;
+        
+        const latestReqsQuery = `SELECT r.requisition_id, r.status, r.created_at, u.full_name as creator_name, (SELECT COUNT(*) FROM requisition_items ri WHERE ri.requisition_id = r.requisition_id) as item_count FROM requisitions r JOIN users u ON r.created_by = u.user_id ORDER BY r.created_at DESC LIMIT 5`;
+        const notificationsQuery = `SELECT * FROM notifications WHERE role = 'Admin' ORDER BY created_at DESC LIMIT 5`;
 
         const [
-            [[activeItems]], [[pendingUsers]], [[awarded]], [[pendingReqs]], [[reqsToday]], [[activeVendors]], [[avgApprovalTime]], [[noBids]], attentionItems, activity
+            [[activeItems]], [[pendingUsers]], [[awarded]], [[pendingReqs]], [[reqsToday]], [[activeVendors]], [[avgApprovalTime]], latestReqs, notifications
         ] = await Promise.all([
             dbPool.query(activeItemsQuery), dbPool.query(pendingUsersQuery), dbPool.query(awardedQuery),
             dbPool.query(pendingReqsQuery), dbPool.query(reqsTodayQuery), dbPool.query(activeVendorsQuery),
-            dbPool.query(avgApprovalTimeQuery), dbPool.query(noBidsQuery), dbPool.query(attentionItemsQuery), dbPool.query(activityQuery)
+            dbPool.query(avgApprovalTimeQuery), dbPool.query(latestReqsQuery), dbPool.query(notificationsQuery)
         ]);
-
+        
         res.json({
             success: true,
-            data: {
-                activeItems: activeItems.count,
-                pendingUsers: pendingUsers.count,
+            data: { 
+                activeItems: activeItems.count, 
+                pendingUsers: pendingUsers.count, 
                 awardedContracts: awarded.count,
                 pendingRequisitionsCount: pendingReqs.count,
                 reqsToday: reqsToday.count,
                 activeVendors: activeVendors.count,
                 avgApprovalTime: avgApprovalTime.avg_days ? parseFloat(avgApprovalTime.avg_days).toFixed(1) : 0,
-                itemsWithNoBids: noBids.count,
-                attentionItems: attentionItems,
-                activityChart: {
-                    labels: activity.map(a => new Date(a.date).toLocaleDateString('en-US', { weekday: 'short' })),
-                    requisitions: activity.map(a => a.requisitions),
-                    bids: activity.map(a => a.bids)
-                }
+                latestRequisitions: latestReqs,
+                notifications: notifications
             }
         });
     } catch (error) {
         next(error);
     }
 });
+
+// New endpoint to get latest requisitions for the Admin dashboard
+app.get('/api/admin/latest-requisitions', authenticateToken, isAdmin, async (req, res, next) => {
+    try {
+        const query = `
+            SELECT 
+                r.requisition_id, 
+                r.status, 
+                r.created_at, 
+                u.full_name as creator_name, 
+                (SELECT COUNT(*) FROM requisition_items ri WHERE ri.requisition_id = r.requisition_id) as item_count 
+            FROM requisitions r 
+            JOIN users u ON r.created_by = u.user_id 
+            ORDER BY r.created_at DESC LIMIT 5`;
+        const [latestReqs] = await dbPool.query(query);
+        res.json({ success: true, data: latestReqs });
+    } catch (error) {
+        next(error);
+    }
+});
+
 
 app.get('/api/requirements/pending', authenticateToken, isAdmin, async (req, res, next) => {
     try {
@@ -607,7 +594,7 @@ app.get('/api/admin/awarded-contracts', authenticateToken, isAdmin, async (req, 
     }
 });
 
-// FIX for Issue 3: Corrected parameter passing for KPI query and added formatted date for reports.
+
 app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res, next) => {
     try {
         const { startDate, endDate } = req.body;
@@ -622,29 +609,6 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
 
         const dateFilter = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
-        // --- KPI Queries ---
-        const kpiQuery = `
-            SELECT
-                COALESCE(SUM(ac.awarded_amount), 0) AS totalSpend,
-                (SELECT COUNT(DISTINCT vendor_id) FROM awarded_contracts ac ${dateFilter ? `${dateFilter.replace(/ac\./g, '')}` : ''}) as participatingVendors,
-                (SELECT COUNT(*) FROM users WHERE role='Vendor' AND is_active=1) as totalVendors,
-                (SELECT COUNT(*) FROM awarded_contracts ac ${dateFilter ? `${dateFilter} AND` : 'WHERE'} awarded_amount <= (SELECT MIN(bid_amount) FROM bids WHERE item_id = ac.item_id)) as l1Awards,
-                (SELECT COUNT(*) FROM awarded_contracts ac ${dateFilter ? `${dateFilter}` : ''}) as totalAwards
-            FROM awarded_contracts ac
-            ${dateFilter}`;
-
-        // --- Chart Queries ---
-        const vendorSpendQuery = `
-            SELECT u.full_name, SUM(ac.awarded_amount) as total
-            FROM awarded_contracts ac
-            JOIN users u ON ac.vendor_id = u.user_id
-            ${dateFilter}
-            GROUP BY u.full_name ORDER BY total DESC LIMIT 5`;
-
-        const categorySpendQuery = `SELECT item_code, SUM(awarded_amount) as total FROM awarded_contracts ac ${dateFilter} GROUP BY item_code HAVING item_code IS NOT NULL ORDER BY total DESC LIMIT 5`;
-
-        // --- Detailed Report Query ---
-        // FIX for Issue 3: Format the date on the server side to prevent "Invalid Date" on the client.
         const detailedReportQuery = `
             SELECT
                 ac.awarded_amount, DATE_FORMAT(ac.awarded_date, '%Y-%m-%d') as awarded_date,
@@ -655,34 +619,12 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
             JOIN users u ON ac.vendor_id = u.user_id
             ${dateFilter}
             ORDER BY ac.awarded_date DESC`;
-
-        const [
-            [[kpis]], topVendors, categorySpend, detailedReport
-        ] = await Promise.all([
-            dbPool.query(kpiQuery, [...params, ...params, ...params, ...params, ...params]),
-            dbPool.query(vendorSpendQuery, params),
-            dbPool.query(categorySpendQuery, params),
-            dbPool.query(detailedReportQuery, params)
-        ]);
+            
+        const [detailedReport] = await dbPool.query(detailedReportQuery, params);
 
         res.json({
             success: true,
             data: {
-                kpis: {
-                    totalSpend: kpis.totalSpend || 0,
-                    totalSavings: 0, // Placeholder
-                    vendorParticipationRate: kpis.totalVendors > 0 ? (kpis.participatingVendors / kpis.totalVendors) * 100 : 0,
-                    l1AwardRate: kpis.totalAwards > 0 ? (kpis.l1Awards / kpis.totalAwards) * 100 : 0,
-                },
-                topVendors: {
-                    labels: topVendors.map(v => v.full_name),
-                    data: topVendors.map(v => v.total)
-                },
-                spendByCategory: {
-                    labels: categorySpend.map(c => c.item_code || 'Unknown'),
-                    data: categorySpend.map(c => c.total)
-                },
-                savingsTrend: { labels: [], data: [] }, // Placeholder
                 detailedReport
             }
         });
@@ -1010,7 +952,6 @@ app.get('/api/messages/:otherUserId', authenticateToken, async (req, res, next) 
     }
 });
 
-// FIX for Issue 4: Added a new endpoint to mark all notifications as read.
 app.post('/api/notifications/mark-all-read', authenticateToken, async (req, res, next) => {
     try {
         await dbPool.query("UPDATE messages SET is_read = 1 WHERE recipient_id = ?", [req.user.userId]);
@@ -1056,7 +997,6 @@ app.get('/api/notifications', authenticateToken, async (req, res, next) => {
     }
 });
 
-// NEW FEATURE: Endpoint for sidebar counts
 app.get('/api/sidebar-counts', authenticateToken, async (req, res, next) => {
     try {
         const { userId, role } = req.user;
@@ -1084,7 +1024,6 @@ app.get('/api/sidebar-counts', authenticateToken, async (req, res, next) => {
 });
 
 
-// --- 7. MISC & EMAIL ---
 app.post('/api/send-email', authenticateToken, async (req, res, next) => {
     if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_API_KEY.startsWith('SG.')) {
         console.error("====== INVALID SENDGRID CONFIGURATION ======");
