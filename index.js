@@ -409,7 +409,7 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
         
         const latestReqsQuery = `SELECT r.requisition_id, r.status, r.created_at, u.full_name as creator_name, (SELECT COUNT(*) FROM requisition_items ri WHERE ri.requisition_id = r.requisition_id) as item_count FROM requisitions r JOIN users u ON r.created_by = u.user_id ORDER BY r.created_at DESC LIMIT 5`;
         
-        const notificationsQuery = `SELECT CONCAT('New user registered: ', full_name) AS text, created_at AS timestamp FROM pending_users ORDER BY created_at DESC LIMIT 5`;
+        const notificationsQuery = `SELECT CONCAT('New user registered: ', full_name) AS text, submitted_at AS timestamp FROM pending_users ORDER BY created_at DESC LIMIT 5`;
         
         const reqTrendsQuery = `SELECT DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as count FROM requisitions GROUP BY month ORDER BY month ASC`;
         const biddingActivityQuery = `
@@ -1147,3 +1147,4 @@ app.use((err, req, res, next) => {
 // ================== SERVER START ==================
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server is running on http://localhost:${PORT}`));
+
