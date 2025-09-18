@@ -277,7 +277,7 @@ app.post('/api/bids', authenticateToken, async (req, res, next) => {
             
             if (countResult.count >= 3) {
                  invalidBids.push(bid.item_name);
-                 continue; // Skip this bid and continue to the next one
+                 continue;
             }
 
             for (const itemId of originalItemIds) {
@@ -324,8 +324,15 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
             dbPool.query(needsBidQuery, [vendorId, vendorId]),
             dbPool.query(l1BidsQuery, [vendorId]),
             dbPool.query(recentBidsQuery, [vendorId]),
-            // Assuming you have a notifications table for vendor-specific notifications
-            dbPool.query(`SELECT 'New Item Assigned' as text, NOW() as timestamp, 'vendor-requirements-view' as view FROM requisition_assignments ra WHERE ra.vendor_id = ? AND ra.assigned_at > DATE_SUB(NOW(), INTERVAL 1 DAY) UNION ALL SELECT 'Contract Awarded' as text, awarded_date as timestamp, 'vendor-awarded-view' as view FROM awarded_contracts WHERE vendor_id = ? ORDER BY timestamp DESC LIMIT 5`, [vendorId, vendorId])
+            dbPool.query(`
+                SELECT 'New Item Assigned' as text, ra.assigned_at as timestamp, 'vendor-requirements-view' as view 
+                FROM requisition_assignments ra 
+                WHERE ra.vendor_id = ? AND ra.assigned_at > DATE_SUB(NOW(), INTERVAL 1 DAY) 
+                UNION ALL 
+                SELECT 'Contract Awarded' as text, awarded_date as timestamp, 'vendor-awarded-view' as view 
+                FROM awarded_contracts 
+                WHERE vendor_id = ? 
+                ORDER BY timestamp DESC LIMIT 5`, [vendorId, vendorId])
         ]);
 
         res.json({
@@ -390,8 +397,11 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
         const activeVendorsQuery = "SELECT COUNT(*) as count FROM users WHERE role = 'Vendor' AND is_active = 1";
         const avgApprovalTimeQuery = "SELECT AVG(DATEDIFF(r.approved_at, r.created_at)) as avg_days FROM requisitions r WHERE r.status = 'Processed' AND r.approved_at IS NOT NULL";
         
+        // Revised query for Latest Requisitions for better dashboard view
         const latestReqsQuery = `SELECT r.requisition_id, r.status, r.created_at, u.full_name as creator_name, (SELECT COUNT(*) FROM requisition_items ri WHERE ri.requisition_id = r.requisition_id) as item_count FROM requisitions r JOIN users u ON r.created_by = u.user_id ORDER BY r.created_at DESC LIMIT 5`;
-        const notificationsQuery = `SELECT * FROM notifications WHERE role = 'Admin' ORDER BY created_at DESC LIMIT 5`;
+        
+        // No more separate notifications table, fetching from relevant sources
+        const notificationsQuery = `SELECT CONCAT('New user registered: ', full_name) AS text, created_at AS timestamp, 'admin-pending-users-view' AS view FROM pending_users ORDER BY created_at DESC LIMIT 5`;
 
         const [
             [[activeItems]], [[pendingUsers]], [[awarded]], [[pendingReqs]], [[reqsToday]], [[activeVendors]], [[avgApprovalTime]], latestReqs, notifications
@@ -415,26 +425,6 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
                 notifications: notifications
             }
         });
-    } catch (error) {
-        next(error);
-    }
-});
-
-// New endpoint to get latest requisitions for the Admin dashboard
-app.get('/api/admin/latest-requisitions', authenticateToken, isAdmin, async (req, res, next) => {
-    try {
-        const query = `
-            SELECT 
-                r.requisition_id, 
-                r.status, 
-                r.created_at, 
-                u.full_name as creator_name, 
-                (SELECT COUNT(*) FROM requisition_items ri WHERE ri.requisition_id = r.requisition_id) as item_count 
-            FROM requisitions r 
-            JOIN users u ON r.created_by = u.user_id 
-            ORDER BY r.created_at DESC LIMIT 5`;
-        const [latestReqs] = await dbPool.query(query);
-        res.json({ success: true, data: latestReqs });
     } catch (error) {
         next(error);
     }
@@ -961,11 +951,13 @@ app.post('/api/notifications/mark-all-read', authenticateToken, async (req, res,
     }
 });
 
+// FIX for Admin/Vendor dashboard: Use a single notifications endpoint that fetches from multiple sources.
 app.get('/api/notifications', authenticateToken, async (req, res, next) => {
     try {
         const { userId, role } = req.user;
         let notifications = [];
 
+        // Fetching messages for all users
         const [msgCount] = await dbPool.query("SELECT COUNT(*) as count FROM messages WHERE recipient_id = ? AND is_read = 0", [userId]);
         if (msgCount[0].count > 0) {
             notifications.push({ text: `You have ${msgCount[0].count} new message(s).`, view: 'messaging-view' });
@@ -997,6 +989,7 @@ app.get('/api/notifications', authenticateToken, async (req, res, next) => {
     }
 });
 
+// NEW FEATURE: Endpoint for sidebar counts
 app.get('/api/sidebar-counts', authenticateToken, async (req, res, next) => {
     try {
         const { userId, role } = req.user;
@@ -1023,7 +1016,28 @@ app.get('/api/sidebar-counts', authenticateToken, async (req, res, next) => {
     }
 });
 
+// NEW ENDPOINT for Admin Dashboard's Latest Requisitions
+app.get('/api/admin/latest-requisitions', authenticateToken, isAdmin, async (req, res, next) => {
+    try {
+        const query = `
+            SELECT 
+                r.requisition_id, 
+                r.status, 
+                r.created_at, 
+                u.full_name as creator_name, 
+                (SELECT COUNT(*) FROM requisition_items ri WHERE ri.requisition_id = r.requisition_id) as item_count 
+            FROM requisitions r 
+            JOIN users u ON r.created_by = u.user_id 
+            ORDER BY r.created_at DESC 
+            LIMIT 5`;
+        const [latestReqs] = await dbPool.query(query);
+        res.json({ success: true, data: latestReqs });
+    } catch (error) {
+        next(error);
+    }
+});
 
+// --- 7. MISC & EMAIL ---
 app.post('/api/send-email', authenticateToken, async (req, res, next) => {
     if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_API_KEY.startsWith('SG.')) {
         console.error("====== INVALID SENDGRID CONFIGURATION ======");
