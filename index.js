@@ -55,7 +55,9 @@ const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
     params: {
         folder: 'procurement_uploads',
-        upload_preset: 'ml_default', // FORCE CORRECT PRESET
+        upload_preset: 'ml_default',
+        // FIX: Added 'resource_type: "auto"' to correctly handle PDFs and other non-image files.
+        resource_type: 'auto',
         allowed_formats: ['jpg', 'jpeg', 'png', 'pdf'],
         public_id: (req, file) => `${Date.now()}-${file.originalname.replace(/\s/g, '_')}`,
     },
@@ -220,6 +222,7 @@ app.get('/api/requisitions/my-status', authenticateToken, async (req, res, next)
 // --- 3. VENDOR FEATURES ---
 app.get('/api/requirements/assigned', authenticateToken, async (req, res, next) => {
     try {
+        // FIX: Added LOWER(TRIM(...)) to GROUP BY to handle data inconsistencies (case sensitivity, extra spaces).
         const query = `
             SELECT 
                 ri.item_name, 
@@ -235,7 +238,7 @@ app.get('/api/requirements/assigned', authenticateToken, async (req, res, next) 
             JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id
             LEFT JOIN bids b ON ri.item_id = b.item_id AND b.vendor_id = ?
             WHERE ra.vendor_id = ? AND ri.status = 'Active'
-            GROUP BY ri.item_name, ri.item_code, ri.unit, ri.freight_required
+            GROUP BY LOWER(TRIM(ri.item_name)), LOWER(TRIM(ri.item_code)), ri.unit, ri.freight_required
             ORDER BY ri.item_name ASC;
         `;
         const [items] = await dbPool.query(query, [req.user.userId, req.user.userId, req.user.userId, req.user.userId]);
@@ -597,7 +600,7 @@ app.get('/api/admin/awarded-contracts', authenticateToken, isAdmin, async (req, 
     }
 });
 
-// FINAL FIX for Reports Page
+// FIX: Corrected parameter passing for KPI query and added COALESCE for robustness.
 app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res, next) => {
     try {
         const { startDate, endDate } = req.body;
@@ -612,6 +615,7 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
         
         const dateFilter = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
         
+        // --- KPI Queries ---
         const kpiQuery = `
             SELECT
                 COALESCE(SUM(ac.awarded_amount), 0) AS totalSpend,
@@ -622,6 +626,7 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
             FROM awarded_contracts ac
             ${dateFilter}`;
         
+        // --- Chart Queries ---
         const vendorSpendQuery = `
             SELECT u.full_name, SUM(ac.awarded_amount) as total
             FROM awarded_contracts ac
@@ -631,6 +636,7 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
             
         const categorySpendQuery = `SELECT item_code, SUM(awarded_amount) as total FROM awarded_contracts ac ${dateFilter} GROUP BY item_code HAVING item_code IS NOT NULL ORDER BY total DESC LIMIT 5`;
 
+        // --- Detailed Report Query ---
         const detailedReportQuery = `
             SELECT 
                 ac.awarded_amount, ac.awarded_date,
@@ -645,7 +651,8 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
         const [
             [[kpis]], topVendors, categorySpend, detailedReport
         ] = await Promise.all([
-            dbPool.query(kpiQuery, [...params, ...params, ...params, ...params]),
+            // FIX: Ensured the correct number of parameter sets (5) are passed when a date filter is active.
+            dbPool.query(kpiQuery, [...params, ...params, ...params, ...params, ...params]),
             dbPool.query(vendorSpendQuery, params),
             dbPool.query(categorySpendQuery, params),
             dbPool.query(detailedReportQuery, params)
@@ -656,7 +663,7 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
             data: {
                 kpis: {
                     totalSpend: kpis.totalSpend || 0,
-                    totalSavings: 0, 
+                    totalSavings: 0, // Placeholder
                     vendorParticipationRate: kpis.totalVendors > 0 ? (kpis.participatingVendors / kpis.totalVendors) * 100 : 0,
                     l1AwardRate: kpis.totalAwards > 0 ? (kpis.l1Awards / kpis.totalAwards) * 100 : 0,
                 },
@@ -668,7 +675,7 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
                     labels: categorySpend.map(c => c.item_code || 'Unknown'),
                     data: categorySpend.map(c => c.total)
                 },
-                savingsTrend: { labels: [], data: [] }, 
+                savingsTrend: { labels: [], data: [] }, // Placeholder
                 detailedReport
             }
         });
@@ -677,6 +684,7 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
         next(error);
     }
 });
+
 
 app.post('/api/items/reopen-bidding', authenticateToken, isAdmin, async (req, res, next) => {
     let connection;
