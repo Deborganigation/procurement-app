@@ -31,6 +31,9 @@
             --text-dark: #32325D;
             --text-muted: #8898AA;
             --border-color: #E9ECEF;
+            --whatsapp-bg: #e5ddd5;
+            --sent-bubble-bg: #dcf8c6;
+            --received-bubble-bg: #ffffff;
         }
         
         body { 
@@ -84,6 +87,8 @@
 
         .top-header { display: flex; justify-content: space-between; align-items: center; background: transparent; padding: 0; margin-bottom: 30px; }
         .sidebar-toggle-btn { background: none; border: none; font-size: 1.2rem; color: var(--text-dark); }
+        #notification-bell { position: relative; }
+        #notification-badge { position: absolute; top: -5px; right: -8px; }
 
         .stat-card { border: none; border-radius: .5rem; color: white; padding: 25px; box-shadow: 0 15px 35px rgba(50,50,93,.1), 0 5px 15px rgba(0,0,0,.07) !important; transition: transform 0.3s ease, box-shadow 0.3s ease; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
         .stat-card:hover { transform: translateY(-5px); box-shadow: 0 18px 35px rgba(50,50,93,.1), 0 8px 15px rgba(0,0,0,.07) !important; }
@@ -110,6 +115,16 @@
             gap: 1rem;
             align-items: end;
         }
+
+        /* NEW WHATSAPP CHAT STYLES */
+        #chat-messages { background-color: var(--whatsapp-bg); display: flex; flex-direction: column; gap: 12px; }
+        .message-bubble { max-width: 75%; width: fit-content; padding: 8px 12px; border-radius: 10px; line-height: 1.4; word-wrap: break-word; }
+        .message-bubble.sent { background-color: var(--sent-bubble-bg); align-self: flex-end; border-bottom-right-radius: 2px; }
+        .message-bubble.received { background-color: var(--received-bubble-bg); align-self: flex-start; border-bottom-left-radius: 2px; }
+        .message-bubble .timestamp { font-size: 0.7rem; color: #888; margin-top: 5px; text-align: right; display: block; }
+        .message-bubble .ticks { font-size: 0.8rem; margin-left: 5px; }
+        .ticks .fa-check { color: #888; }
+        .ticks .fa-check-double.read { color: #4fc3f7; }
 
         @media (max-width: 992px) {
             .sidebar { transform: translateX(-100%); width: 280px; }
@@ -186,7 +201,18 @@
                     <button class="sidebar-toggle-btn desktop" id="sidebar-toggle-desktop"><i class="fas fa-bars"></i></button>
                     <h1 id="header-title" class="h4 mb-0 ms-3 fw-bold text-dark"></h1>
                 </div>
-                <button class="btn btn-sm btn-outline-primary" onclick="handleManualRefresh()"><i class="fas fa-sync-alt me-2"></i>Refresh Data</button>
+                <div class="d-flex align-items-center gap-3">
+                    <div class="dropdown">
+                        <button class="btn btn-light" type="button" id="notification-bell" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-bell"></i>
+                            <span id="notification-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="display: none;"></span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" id="notification-list" aria-labelledby="notification-bell">
+                           <li><a class="dropdown-item text-muted text-center" href="#">No new notifications</a></li>
+                        </ul>
+                    </div>
+                    <button class="btn btn-sm btn-outline-primary" onclick="handleManualRefresh()"><i class="fas fa-sync-alt me-2"></i>Refresh Data</button>
+                </div>
             </div>
             <div id="main-view">
             </div>
@@ -331,7 +357,7 @@
                         <button class="btn btn-success btn-sm" onclick="handleBulkBidSubmit()"><i class="fas fa-check-double me-2"></i>Submit All Entered Bids</button>
                     </div>
                     <div class="card-body p-0"><div class="table-responsive"><table class="table table-hover align-middle mb-0" id="vendor-reqs-table">
-                        <thead class="table-light"><tr><th>Item Details</th><th>Qty & Unit</th><th>My Bid Status</th><th>My Rank</th></tr></thead>
+                        <thead class="table-light"><tr><th>Item Details</th><th>Total Qty & Unit</th><th>My Bid Status</th><th>My Rank</th></tr></thead>
                         <tbody id="vendor-reqs-tbody"></tbody>
                     </table></div></div>
                 </div>`,
@@ -501,6 +527,7 @@
         function handleLogout() { sessionStorage.clear(); window.location.reload(); }
         function handleRoleChange() { const isVendor = $('#reg-role').val() === 'Vendor'; $('#reg-company-wrapper').toggleClass('hidden', !isVendor); $('#reg-gstin-wrapper').toggleClass('hidden', !isVendor); $('#reg-company').prop('required', isVendor); }
         async function handleRegistration(e) { e.preventDefault(); const data = { FullName: $('#reg-fullname').val(), Email: $('#reg-email').val(), Password: $('#reg-password').val(), Role: $('#reg-role').val(), CompanyName: $('#reg-company').val(), ContactNumber: $('#reg-contact').val(), GSTIN: $('#reg-gstin').val() }; const result = await apiCall('/register', 'POST', data); if (result.success) { showToast(result.message, 'success'); registerModal.hide(); $(e.target)[0].reset(); } }
+        
         async function setupUIForRole(user) {
             loginWrapper.addClass('hidden');
             appContainer.removeClass('hidden');
@@ -509,6 +536,8 @@
             $('#nav-links .nav-link').hide();
             $(`.${user.role.toLowerCase()}-nav-item`).css('display', 'flex');
             
+            fetchNotifications(); // NEW: Fetch notifications on login
+
             const defaultViewMap = { 'Admin': 'admin-dashboard-view', 'Vendor': 'vendor-dashboard-view', 'User': 'user-create-req-view' };
             navigateTo(defaultViewMap[user.role]);
         }
@@ -688,7 +717,7 @@
                         <tr data-item='${JSON.stringify(item)}'>
                             <td>
                                 <strong>${item.item_name}</strong>
-                                <br><small class="text-muted">Req ID: REQ-${item.requisition_id}-${item.item_sl_no} | ${createImageLinks(item)}</small>
+                                <br><small class="text-muted">${item.item_code || 'No Code'}</small>
                             </td>
                             <td>${item.quantity} ${item.unit}</td>
                             <td>${isBidded ? `<span class="badge bg-${getBadgeColor(item.my_bid_status)}">${item.my_bid_status}</span>` : `<span class="badge bg-warning">Bidding Open</span>`}</td>
@@ -948,7 +977,8 @@
                     const freight = parseFloat($(this).find('.freight-rate').val()) || 0;
                     
                     bidsToSubmit.push({
-                        item_id: item.item_id,
+                        original_item_ids: item.original_item_ids, // Send consolidated item IDs
+                        item_name: item.item_name, // for error message
                         ex_works_rate: exWorks,
                         freight_rate: freight,
                         bid_amount: (exWorks + freight) * quantity,
@@ -1066,8 +1096,8 @@
             }
         }
         
-        async function openChat(recipientId, recipientName) { if (chatPollingInterval) clearInterval(chatPollingInterval); $('#chat-welcome').addClass('d-none'); $('#chat-window').removeClass('d-none'); $('#chat-with-name').text(recipientName); $('#message-form').off('submit').on('submit', (e) => { e.preventDefault(); handleSendMessage(recipientId); }); $('#download-chat-btn').off('click').on('click', () => { downloadChatHistory(recipientId, recipientName); }); const fetchAndRender = async () => { const currentUser = JSON.parse(sessionStorage.getItem('loggedInUser')); const result = await apiCall(`/messages/${recipientId}`, 'GET', null, false, false); if (!result.success) return; const messagesDiv = $('#chat-messages'); const isScrolledToBottom = messagesDiv.scrollTop() + messagesDiv.innerHeight() >= messagesDiv[0].scrollHeight - 20; messagesDiv.html(''); result.data.forEach(msg => { const isSent = msg.sender_id == currentUser.user_id; messagesDiv.append(`<div class="message-bubble ${isSent ? 'sent' : 'received'}">${msg.message_body.replace(/\n/g, '<br>')}<small>${new Date(msg.timestamp).toLocaleString()}</small></div>`); }); if(isScrolledToBottom) messagesDiv.scrollTop(messagesDiv[0].scrollHeight); const chatItem = $(`#chat-list [data-userid="${recipientId}"]`); chatItem.find('.badge').remove(); }; await fetchAndRender(); chatPollingInterval = setInterval(fetchAndRender, 7000); }
-        async function handleSendMessage(recipientId) { const input = $('#message-input'); const messageBody = input.val().trim(); if(!messageBody) return; const tempId = Date.now(); const messagesDiv = $('#chat-messages'); messagesDiv.append(`<div class="message-bubble sent" id="msg-${tempId}">${messageBody.replace(/\n/g, '<br>')}<small>Sending...</small></div>`); messagesDiv.scrollTop(messagesDiv[0].scrollHeight); input.val(''); const result = await apiCall('/messages', 'POST', { recipientId, messageBody }); if(result.success) { $(`#msg-${tempId} small`).text(new Date().toLocaleString()); } else { $(`#msg-${tempId} small`).text('Failed to send').css('color', 'yellow'); showToast('Failed to send message', 'error'); } }
+        async function openChat(recipientId, recipientName) { if (chatPollingInterval) clearInterval(chatPollingInterval); $('#chat-welcome').addClass('d-none'); $('#chat-window').removeClass('d-none'); $('#chat-with-name').text(recipientName); $('#message-form').off('submit').on('submit', (e) => { e.preventDefault(); handleSendMessage(recipientId); }); $('#download-chat-btn').off('click').on('click', () => { downloadChatHistory(recipientId, recipientName); }); const fetchAndRender = async () => { const currentUser = JSON.parse(sessionStorage.getItem('loggedInUser')); const result = await apiCall(`/messages/${recipientId}`, 'GET', null, false, false); if (!result.success) return; const messagesDiv = $('#chat-messages'); const isScrolledToBottom = messagesDiv.scrollTop() + messagesDiv.innerHeight() >= messagesDiv[0].scrollHeight - 20; messagesDiv.html(''); result.data.forEach(msg => { const isSent = msg.sender_id == currentUser.user_id; const ticks = isSent ? `<span class="ticks"><i class="fas fa-check-double ${msg.is_read ? 'read' : ''}"></i></span>` : ''; messagesDiv.append(`<div class="message-bubble ${isSent ? 'sent' : 'received'}"><div>${msg.message_body.replace(/\n/g, '<br>')}</div><div class="timestamp">${new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} ${ticks}</div></div>`); }); if(isScrolledToBottom) messagesDiv.scrollTop(messagesDiv[0].scrollHeight); const chatItem = $(`#chat-list [data-userid="${recipientId}"]`); chatItem.find('.badge').remove(); }; await fetchAndRender(); chatPollingInterval = setInterval(fetchAndRender, 7000); }
+        async function handleSendMessage(recipientId) { const input = $('#message-input'); const messageBody = input.val().trim(); if(!messageBody) return; const tempId = Date.now(); const messagesDiv = $('#chat-messages'); const sentTime = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}); messagesDiv.append(`<div class="message-bubble sent" id="msg-${tempId}"><div>${messageBody.replace(/\n/g, '<br>')}</div><div class="timestamp">${sentTime} <span class="ticks"><i class="fas fa-check"></i></span></div></div>`); messagesDiv.scrollTop(messagesDiv[0].scrollHeight); input.val(''); const result = await apiCall('/messages', 'POST', { recipientId, messageBody }, false, false); if(result.success) { $(`#msg-${tempId} .ticks`).html('<i class="fas fa-check-double"></i>'); } else { $(`#msg-${tempId} .timestamp`).text('Failed').css('color', 'red'); showToast('Failed to send message', 'error'); } }
         
         function openAddUserModal() { $('#add-user-form')[0].reset(); addUserModal.show(); }
         async function handleAddUserSubmit(e) { e.preventDefault(); const data = { full_name: $('#add-fullname').val(), email: $('#add-email').val(), password: $('#add-password').val(), role: $('#add-role').val(), company_name: $('#add-company').val(), contact_number: $('#add-contact').val(), gstin: $('#add-gstin').val() }; const result = await apiCall('/users/add', 'POST', data); if (result.success) { showToast('User created!', 'success'); addUserModal.hide(); load_admin_user_control_view(); } }
@@ -1176,6 +1206,9 @@
         }
         
         async function sendConsolidatedAwardEmails(winningBids) {
+            const adminEmailsResult = await apiCall('/users/admins', 'GET', null, false, false);
+            const adminEmails = adminEmailsResult.success ? adminEmailsResult.data : [];
+
             const notificationsByVendor = {};
             winningBids.forEach(bid => {
                 if (bid.vendor_email) {
@@ -1183,7 +1216,7 @@
                         notificationsByVendor[bid.vendor_email] = { vendorName: bid.vendor_name, items: [], totalValue: 0 };
                     }
                     const bidAmount = parseFloat(bid.bid_amount);
-                    notificationsByVendor[bid.vendor_email].items.push({ name: bid.item_name, amount: bidAmount, reqId: `REQ-${bid.requisition_id}-${bid.item_sl_no}` });
+                    notificationsByVendor[bid.vendor_email].items.push({ name: bid.item_name, amount: bidAmount, reqId: `REQ-${bid.requisition_id}-${bid.item_sl_no}`, qty: bid.quantity, unit: bid.unit });
                     notificationsByVendor[bid.vendor_email].totalValue += bidAmount;
                 }
             });
@@ -1191,7 +1224,7 @@
             for (const email in notificationsByVendor) {
                 const notification = notificationsByVendor[email];
                 const subject = `Contract Award Notification from DEB'S PROCUREMENT`;
-                const itemsHtml = notification.items.map(item => `<tr><td style="padding: 10px; border-bottom: 1px solid #dee2e6;">${item.name} (${item.reqId})</td><td style="padding: 10px; border-bottom: 1px solid #dee2e6; text-align: right;">${formatCurrency(item.amount)}</td></tr>`).join('');
+                const itemsHtml = notification.items.map(item => `<tr><td style="padding: 10px; border-bottom: 1px solid #dee2e6;">${item.name} (${item.reqId}) <br><small style="color: #555;">Qty: ${item.qty} ${item.unit}</small></td><td style="padding: 10px; border-bottom: 1px solid #dee2e6; text-align: right; vertical-align: middle;">${formatCurrency(item.amount)}</td></tr>`).join('');
                 
                 const htmlBody = `
                     <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 20px auto; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">
@@ -1226,7 +1259,7 @@
                         </div>
                     </div>`;
                 
-                apiCall('/send-email', 'POST', { recipient: email, subject, htmlBody });
+                apiCall('/send-email', 'POST', { recipient: email, subject, htmlBody, cc: adminEmails });
             }
         }
         
@@ -1268,12 +1301,16 @@
         }
 
         async function downloadBiddingHistoryReport() { const result = await apiCall('/admin/bidding-history'); if(result.success) { const formattedData = result.data.map(d => ({ 'Req ID': `REQ-${d.requisition_id}-${d.item_sl_no}`, 'Item Name': d.item_name, 'Vendor Name': d.vendor_name, 'Bid Amount': d.bid_amount, 'Ex-works Rate': d.ex_works_rate, 'Freight Rate': d.freight_rate, 'Status': d.bid_status, 'Date': new Date(d.submitted_at).toLocaleString() })); exportToExcel(formattedData, 'Bidding_History_Report.xlsx'); }}
+        
+        // BUG FIX: Added Quantity and Unit to the download.
         async function downloadAdminAwardedContractsReport() { 
             const result = await apiCall('/admin/awarded-contracts'); 
             if(result.success) { 
                 const dataToExport = result.data.map(c => ({ 
                     'Req ID': `REQ-${c.requisition_id}-${c.item_sl_no}`, 
                     'Item Name': c.item_name, 
+                    'Quantity': c.quantity,
+                    'Unit': c.unit,
                     'Vendor Name': c.vendor_name, 
                     'Ex-works Rate': c.ex_works_rate,
                     'Freight Rate': c.freight_rate,
@@ -1320,6 +1357,28 @@
                 if (!checkbox.is(':disabled')) {
                     checkbox.prop('checked', true);
                 }
+            }
+        }
+
+        async function fetchNotifications() {
+            const result = await apiCall('/notifications', 'GET', null, false, false);
+            const notificationList = $('#notification-list');
+            const badge = $('#notification-badge');
+
+            if (result.success && result.data.length > 0) {
+                badge.text(result.data.length).show();
+                notificationList.html('');
+                result.data.forEach(notif => {
+                    const item = $(`<li><a class="dropdown-item" href="#">${notif.text}</a></li>`);
+                    item.on('click', (e) => {
+                        e.preventDefault();
+                        navigateTo(notif.view);
+                    });
+                    notificationList.append(item);
+                });
+            } else {
+                badge.hide();
+                notificationList.html('<li><a class="dropdown-item text-muted text-center" href="#">No new notifications</a></li>');
             }
         }
     </script>
