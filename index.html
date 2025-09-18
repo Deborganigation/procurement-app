@@ -576,10 +576,9 @@
             $('#nav-links .nav-link').hide();
             $(`.${user.role.toLowerCase()}-nav-item`).css('display', 'flex');
             
-            // Start background data refresh for Admin and Vendor
             if (user.role === 'Admin' || user.role === 'Vendor') {
                 if (backgroundRefreshInterval) clearInterval(backgroundRefreshInterval);
-                backgroundRefreshInterval = setInterval(backgroundRefreshData, 120000); // 2 minutes
+                backgroundRefreshInterval = setInterval(backgroundRefreshData, 120000);
             }
             
             await fetchSidebarCounts();
@@ -773,12 +772,13 @@
                     `;
                     const freightValue = item.freight_required ? (item.my_freight_rate || '') : 'Not Applicable';
                     const freightReadonly = !item.freight_required ? 'readonly' : '';
+                    const freightClass = !item.freight_required ? 'not-applicable' : '';
                     const bidRow = `
                         <tr class="bidding-row">
                             <td colspan="4" class="p-3 bg-light">
                                 <div class="bid-input-group">
                                     <div><label class="form-label small mb-1">Ex-works Rate/Unit (₹)</label><input type="number" step="0.01" class="form-control form-control-sm ex-works-rate" value="${item.my_ex_works_rate || ''}" oninput="calculateTotalBid(this)"></div>
-                                    <div><label class="form-label small mb-1">Freight Rate/Unit (₹)</label><input type="number" step="0.01" class="form-control form-control-sm freight-rate" value="${freightValue}" oninput="calculateTotalBid(this)" ${freightReadonly}></div>
+                                    <div><label class="form-label small mb-1">Freight Rate/Unit (₹)</label><input type="number" step="0.01" class="form-control form-control-sm freight-rate ${freightClass}" value="${freightValue}" oninput="calculateTotalBid(this)" ${freightReadonly}></div>
                                     <div><label class="form-label small mb-1">Total Bid Amount (₹)</label><p class="form-control-plaintext fw-bold total-bid-amount ps-2">${formatCurrency(item.my_bid_amount) || '₹0.00'}</p></div>
                                 </div>
                             </td>
@@ -1024,7 +1024,7 @@
                     const itemRow = $(this).prev('tr');
                     const item = JSON.parse(itemRow.attr('data-item'));
                     
-                    if (item.my_bid_status && item.my_bid_status.includes('3 Bids')) { // Assuming a status like '3 Bids Submitted'
+                    if (item.my_bid_status && item.my_bid_status.includes('3 Bids')) {
                         invalidBids.push(item.item_name);
                     } else {
                         bidsToSubmit.push({
@@ -1225,13 +1225,11 @@
             if (!result.success) return;
             const data = result.data;
             
-            // KPIs
             $('#report-total-spend').text(formatCurrency(data.kpis.totalSpend));
             $('#report-cost-savings').text(formatCurrency(data.kpis.totalSavings));
             $('#report-vendor-participation').text(`${data.kpis.vendorParticipationRate.toFixed(1)}%`);
             $('#report-l1-award-rate').text(`${data.kpis.l1AwardRate.toFixed(1)}%`);
 
-            // Charts
             createChart('vendorSpendChart', 'bar', {
                 labels: data.topVendors.labels,
                 datasets: [{ label: 'Total Spend (₹)', data: data.topVendors.data, backgroundColor: '#5E72E4' }]
@@ -1247,7 +1245,6 @@
                 datasets: [{ label: 'Monthly Savings (₹)', data: data.savingsTrend.data, borderColor: '#2DCE89', tension: 0.4, fill: false }]
             });
 
-            // Detailed Table
             const reportTbody = $('#detailed-report-tbody');
             reportTbody.empty();
             if(data.detailedReport.length > 0) {
@@ -1419,7 +1416,6 @@
             }
         }
 
-        // NEW: Function to fetch notifications
         async function fetchNotifications() {
             const result = await apiCall('/notifications', 'GET', null, false, false);
             const notificationList = $('#notification-list');
@@ -1427,14 +1423,9 @@
 
             if (result.success && result.data.length > 0) {
                 badge.text(result.data.length).show();
-                notificationList.find('li:not(:first-child, .dropdown-divider)').remove(); // Remove old notifications
+                notificationList.find('li:not(:first-child, .dropdown-divider)').remove(); 
                 result.data.forEach(notif => {
-                    const item = $(`<li><a class="dropdown-item" href="#">${notif.text}</a></li>`);
-                    item.on('click', (e) => {
-                        e.preventDefault();
-                        navigateTo(notif.view);
-                        // No need to clear badge on click, the background refresh will handle it
-                    });
+                    const item = $(`<li><a class="dropdown-item" href="#" onclick="navigateTo('${notif.view}', event)">${notif.text}</a></li>`);
                     notificationList.find('.dropdown-divider').before(item);
                 });
             } else {
@@ -1443,54 +1434,43 @@
                 notificationList.find('.dropdown-divider').after('<li><a class="dropdown-item text-muted text-center" href="#">No new notifications</a></li>');
             }
         }
-
-        // NEW: Function for sidebar counts
+        
         async function fetchSidebarCounts() {
              const result = await apiCall('/sidebar-counts', 'GET', null, false, false);
              if (result.success) {
                 const counts = result.data;
-                // Update Messages Badge
                 $('#badge-unread-messages').text(counts.unreadMessages > 0 ? counts.unreadMessages : '').toggle(counts.unreadMessages > 0);
-                // Update Admin Badges
                 $('#badge-pending-reqs').text(counts.pendingReqs > 0 ? counts.pendingReqs : '').toggle(counts.pendingReqs > 0);
                 $('#badge-pending-users').text(counts.pendingUsers > 0 ? counts.pendingUsers : '').toggle(counts.pendingUsers > 0);
             }
         }
 
-        // NEW: Function to mark all notifications as read
         async function handleMarkAllNotificationsRead(e) {
-            e.preventDefault();
-            const result = await apiCall('/notifications/mark-all-read', 'POST', null); // NEW ENDPOINT
+            if (e) e.preventDefault();
+            const result = await apiCall('/notifications/mark-all-read', 'POST', null);
             if (result.success) {
                 showToast('Notifications marked as read.', 'success');
-                // Immediately refresh the notification badge
                 fetchNotifications();
                 fetchSidebarCounts();
             }
         }
-
-        // NEW: Function for background refresh
+        
         async function backgroundRefreshData() {
             const user = JSON.parse(sessionStorage.getItem('loggedInUser'));
             if (!user) return;
-
-            // Silently refresh data without showing the main loader
-            if (user.role === 'Admin' || user.role === 'Vendor') {
-                 const currentView = $('#nav-links .nav-link.active').data('view');
-                 if (currentView === 'admin-dashboard-view') {
-                    await apiCall('/admin/dashboard-stats', 'GET', null, false, false).then(result => {
-                        if(result.success) {
-                            // Only update parts of the dashboard, not the whole view
-                            const data = result.data;
-                            $('#stats-active-items').text(data.activeItems);
-                            $('#stats-pending-users').text(data.pendingUsers);
-                            $('#stats-pending-reqs').text(data.pendingRequisitionsCount);
-                            $('#stats-no-bids').text(data.itemsWithNoBids);
-                        }
-                    });
-                 }
+            
+            const currentView = $('#nav-links .nav-link.active').data('view');
+            if (currentView === 'admin-dashboard-view') {
+                await apiCall('/admin/dashboard-stats', 'GET', null, false, false).then(result => {
+                    if(result.success) {
+                        const data = result.data;
+                        $('#stats-active-items').text(data.activeItems);
+                        $('#stats-pending-users').text(data.pendingUsers);
+                        $('#stats-pending-reqs').text(data.pendingRequisitionsCount);
+                        $('#stats-no-bids').text(data.itemsWithNoBids);
+                    }
+                });
             }
-            // Always refresh notifications and sidebar counts for all users
             await fetchNotifications();
             await fetchSidebarCounts();
         }
