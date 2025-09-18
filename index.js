@@ -384,8 +384,7 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
         const activeVendorsQuery = "SELECT COUNT(*) as count FROM users WHERE role = 'Vendor' AND is_active = 1";
         const avgApprovalTimeQuery = "SELECT AVG(DATEDIFF(r.approved_at, r.created_at)) as avg_days FROM requisitions r WHERE r.status = 'Processed' AND r.approved_at IS NOT NULL";
         
-        // BUG FIX: Rewritten queries to be more robust
-        const noBidsQuery = "SELECT COUNT(ri.item_id) as count FROM requisition_items ri LEFT JOIN bids b ON ri.item_id = b.item_id WHERE ri.status = 'Active' AND b.bid_id IS NULL";
+        const noBidsQuery = "SELECT COUNT(DISTINCT ri.item_id) as count FROM requisition_items ri LEFT JOIN bids b ON ri.item_id = b.item_id WHERE ri.status = 'Active' AND b.bid_id IS NULL";
         const attentionItemsQuery = "SELECT ri.item_id, ri.item_name, ri.requisition_id, ri.item_sl_no FROM requisition_items ri LEFT JOIN bids b ON ri.item_id = b.item_id WHERE ri.status = 'Active' AND b.bid_id IS NULL GROUP BY ri.item_id LIMIT 5";
         
         const activityQuery = `
@@ -602,13 +601,17 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
     try {
         const { startDate, endDate } = req.body;
         
-        let dateFilter = '';
+        let whereClauses = [];
         const params = [];
 
         if (startDate && endDate) {
-            dateFilter = 'WHERE ac.awarded_date BETWEEN ? AND ?';
+            whereClauses.push('ac.awarded_date BETWEEN ? AND ?');
             params.push(startDate, `${endDate} 23:59:59`);
         }
+        
+        const dateFilter = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+        
+        const kpiParams = [...params]; // Params for queries with one date filter
         
         // --- KPI Queries ---
         const kpiQuery = `
@@ -616,7 +619,7 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
                 SUM(ac.awarded_amount) AS totalSpend,
                 (SELECT COUNT(DISTINCT vendor_id) FROM awarded_contracts ac ${dateFilter}) as participatingVendors,
                 (SELECT COUNT(*) FROM users WHERE role='Vendor' AND is_active=1) as totalVendors,
-                (SELECT COUNT(*) FROM awarded_contracts ac WHERE ${dateFilter.replace('ac.','')} AND awarded_amount <= (SELECT MIN(bid_amount) FROM bids WHERE item_id = ac.item_id)) as l1Awards,
+                (SELECT COUNT(*) FROM awarded_contracts ac ${dateFilter} AND awarded_amount <= (SELECT MIN(bid_amount) FROM bids WHERE item_id = ac.item_id)) as l1Awards,
                 (SELECT COUNT(*) FROM awarded_contracts ac ${dateFilter}) as totalAwards
             FROM awarded_contracts ac
             ${dateFilter}`;
@@ -646,10 +649,10 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
         const [
             [[kpis]], topVendors, categorySpend, detailedReport
         ] = await Promise.all([
-            dbPool.query(kpiQuery, [...params, ...params, ...params, ...params]),
-            dbPool.query(vendorSpendQuery, params),
-            dbPool.query(categorySpendQuery, params),
-            dbPool.query(detailedReportQuery, params)
+            dbPool.query(kpiQuery, [...kpiParams, ...kpiParams, ...kpiParams, ...kpiParams]),
+            dbPool.query(vendorSpendQuery, kpiParams),
+            dbPool.query(categorySpendQuery, kpiParams),
+            dbPool.query(detailedReportQuery, kpiParams)
         ]);
 
         res.json({
@@ -657,7 +660,7 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
             data: {
                 kpis: {
                     totalSpend: kpis.totalSpend || 0,
-                    totalSavings: 0, // Placeholder, needs a more complex query if required
+                    totalSavings: 0, // Placeholder
                     vendorParticipationRate: kpis.totalVendors > 0 ? (kpis.participatingVendors / kpis.totalVendors) * 100 : 0,
                     l1AwardRate: kpis.totalAwards > 0 ? (kpis.l1Awards / kpis.totalAwards) * 100 : 0,
                 },
@@ -1032,6 +1035,34 @@ app.get('/api/notifications', authenticateToken, async (req, res, next) => {
         next(error);
     }
 });
+
+// NEW FEATURE: Endpoint for sidebar counts
+app.get('/api/sidebar-counts', authenticateToken, async (req, res, next) => {
+    try {
+        const { userId, role } = req.user;
+        let counts = {
+            unreadMessages: 0,
+            pendingReqs: 0,
+            pendingUsers: 0
+        };
+
+        const [msgCount] = await dbPool.query("SELECT COUNT(*) as count FROM messages WHERE recipient_id = ? AND is_read = 0", [userId]);
+        counts.unreadMessages = msgCount[0].count;
+        
+        if (role === 'Admin') {
+            const [pendingUsers] = await dbPool.query("SELECT COUNT(*) as count FROM pending_users");
+            counts.pendingUsers = pendingUsers[0].count;
+
+            const [pendingReqs] = await dbPool.query("SELECT COUNT(DISTINCT requisition_id) as count FROM requisitions WHERE status = 'Pending Approval'");
+            counts.pendingReqs = pendingReqs[0].count;
+        }
+
+        res.json({ success: true, data: counts });
+    } catch (error) {
+        next(error);
+    }
+});
+
 
 // --- 7. MISC & EMAIL ---
 app.post('/api/send-email', authenticateToken, async (req, res, next) => {
