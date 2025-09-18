@@ -242,7 +242,9 @@
                             <span id="notification-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="display: none;"></span>
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end" id="notification-list" aria-labelledby="notification-bell">
-                           <li><a class="dropdown-item text-muted text-center" href="#">No new notifications</a></li>
+                             <li><a class="dropdown-item fw-bold text-center" href="#" onclick="handleMarkAllNotificationsRead(event)">Mark All as Read</a></li>
+                             <li><hr class="dropdown-divider"></li>
+                             <li><a class="dropdown-item text-muted text-center" href="#">No new notifications</a></li>
                         </ul>
                     </div>
                     <button class="btn btn-sm btn-outline-primary" onclick="handleManualRefresh()"><i class="fas fa-sync-alt me-2"></i>Refresh Data</button>
@@ -479,11 +481,11 @@
                 if (response.status === 401 || (response.status === 403 && !isFormData)) { 
                     const errorData = await response.clone().json().catch(() => ({}));
                     if (errorData.message && errorData.message.includes('maximum of 3 bids')) {
-                          throw new Error(errorData.message);
+                         throw new Error(errorData.message);
                     }
-                   showToast('Session expired or forbidden. Please log in again.', 'error');
-                   handleLogout();
-                   return { success: false, error: 'Unauthorized' };
+                    showToast('Session expired or forbidden. Please log in again.', 'error');
+                    handleLogout();
+                    return { success: false, error: 'Unauthorized' };
                 }
 
                 const result = await response.json();
@@ -1409,18 +1411,20 @@
 
             if (result.success && result.data.length > 0) {
                 badge.text(result.data.length).show();
-                notificationList.html('');
+                notificationList.find('li:not(:first-child, .dropdown-divider)').remove(); // Remove old notifications
                 result.data.forEach(notif => {
                     const item = $(`<li><a class="dropdown-item" href="#">${notif.text}</a></li>`);
                     item.on('click', (e) => {
                         e.preventDefault();
                         navigateTo(notif.view);
+                        // No need to clear badge on click, the background refresh will handle it
                     });
-                    notificationList.append(item);
+                    notificationList.find('.dropdown-divider').before(item);
                 });
             } else {
                 badge.hide();
-                notificationList.html('<li><a class="dropdown-item text-muted text-center" href="#">No new notifications</a></li>');
+                notificationList.find('li:not(:first-child, .dropdown-divider)').remove();
+                notificationList.find('.dropdown-divider').after('<li><a class="dropdown-item text-muted text-center" href="#">No new notifications</a></li>');
             }
         }
 
@@ -1434,7 +1438,19 @@
                 // Update Admin Badges
                 $('#badge-pending-reqs').text(counts.pendingReqs > 0 ? counts.pendingReqs : '').toggle(counts.pendingReqs > 0);
                 $('#badge-pending-users').text(counts.pendingUsers > 0 ? counts.pendingUsers : '').toggle(counts.pendingUsers > 0);
-             }
+            }
+        }
+
+        // NEW: Function to mark all notifications as read
+        async function handleMarkAllNotificationsRead(e) {
+            e.preventDefault();
+            const result = await apiCall('/notifications/mark-all-read', 'POST', null); // NEW ENDPOINT
+            if (result.success) {
+                showToast('Notifications marked as read.', 'success');
+                // Immediately refresh the notification badge
+                fetchNotifications();
+                fetchSidebarCounts();
+            }
         }
 
         // NEW: Function for background refresh
