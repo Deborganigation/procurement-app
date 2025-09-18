@@ -76,9 +76,9 @@
         .sidebar .nav-link .nav-link-text { display: flex; align-items: center; }
         .sidebar .nav-link .nav-link-text i { margin-right: 15px; width: 20px; text-align: center; font-size: .95rem; }
         .sidebar .user-profile { margin-top: auto; border-top: 1px solid rgba(255,255,255,0.1); padding: 15px 10px; text-align: center; }
-        
+
         .main-content { width: 100%; padding: 30px; margin-left: 260px; transition: margin-left 0.3s ease-in-out; }
-        
+
         .sidebar.collapsed { width: 90px; }
         .sidebar.collapsed .logo span, .sidebar.collapsed .nav-link span, .sidebar.collapsed .nav-link .badge, .sidebar.collapsed .user-profile div { display: none; }
         .sidebar.collapsed .logo i { margin: 0; }
@@ -585,7 +585,7 @@
                     </a>`).join('') || '<div class="list-group-item text-center text-muted small p-3">No high-priority items.</div>');
 
                 const latestReqsList = $('#admin-latest-reqs-list');
-                const reqs = await apiCall('/admin/latest-requisitions', 'GET', null, false, false); // New endpoint for this
+                const reqs = await apiCall('/admin/latest-requisitions', 'GET', null, false, false);
                 if (reqs.success && reqs.data.length > 0) {
                     latestReqsList.html(reqs.data.map(req => `
                         <div class="list-group-item list-group-item-action">
@@ -1093,7 +1093,7 @@
         async function handleUserUpdateSubmit(e) { e.preventDefault(); const userId = $('#edit-userid').val(); const userData = { full_name: $('#edit-fullname').val(), email: $('#edit-email').val(), role: $('#edit-role').val(), company_name: $('#edit-company').val(), contact_number: $('#edit-contact').val(), gstin: $('#edit-gstin').val(), password: $('#edit-password').val() }; const result = await apiCall(`/users/${userId}`, 'PUT', userData); if(result.success) { showToast('User updated!', 'success'); editUserModal.hide(); load_admin_user_control_view(); } }
         async function handleSingleReopenBidding(itemId) { openReopenBiddingModal([itemId]); }
         function handleBulkReopenModal() { const itemIdsToReopen = $('.awarded-item-checkbox:checked').map((i, el) => $(el).data('item-id')).get(); if (itemIdsToReopen.length === 0) return showToast('Please select at least one awarded item to re-open.', 'info'); openReopenBiddingModal(itemIdsToReopen); }
-        async function openReopenBiddingModal(itemIds) { $('#reopen-item-ids').val(JSON.stringify(itemIds)); $('#reopen-remarks').val(''); const checklistDiv = $('#reopen-vendor-checklist').html('<div class="spinner-border spinner-border-sm"></div>'); reopenBiddingModal.show(); const usersResult = await apiCall('/users/vendors'); const vendors = usersResult.success ? usersResult.data : []; checklistDiv.html(vendors.map(v => `<div class="form-check"><input class="form-check-input reopen-vendor-checkbox" type="checkbox" value="${v.user_id}" checked><label class="form-check-label">${v.full_name}</label></div>`).join('')); }
+        async function openReopenBiddingModal(itemIds) { $('#reopen-item-ids').val(JSON.stringify(itemIds)); $('#reopen-remarks').val(''); const checklistDiv = $('#reopen-vendor-checklist').html('<div class="spinner-border spinner-border-sm"></div>'); reopenBiddingModal.show(); const usersResult = await apiCall('/users/vendors'); const vendors = usersResult.success ? users.data : []; checklistDiv.html(vendors.map(v => `<div class="form-check"><input class="form-check-input reopen-vendor-checkbox" type="checkbox" value="${v.user_id}" checked><label class="form-check-label">${v.full_name}</label></div>`).join('')); }
         async function submitReopenBidding() { const itemIds = JSON.parse($('#reopen-item-ids').val()); const remarks = $('#reopen-remarks').val().trim(); if(!remarks) return showToast('Remarks are mandatory.', 'error'); const result = await apiCall('/items/reopen-bidding', 'POST', { itemIds, remarks }); if (result.success) { showToast(result.message, 'success'); reopenBiddingModal.hide(); handleManualRefresh(); } }
 
         async function handleAdvancedBulkAward() {
