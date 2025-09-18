@@ -70,16 +70,17 @@
         .sidebar { width: 260px; background: var(--sidebar-bg); color: var(--sidebar-text); display: flex; flex-direction: column; position: fixed; top: 0; left: 0; height: 100vh; z-index: 1001; transition: all 0.3s ease-in-out; box-shadow: 0 0 2rem 0 rgba(136,152,170,.15); }
         .sidebar .logo { font-size: 1.2rem; font-weight: 600; text-align: center; color: white; padding: 22px 10px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 20px; }
         .sidebar .logo i { color: var(--info-color); }
-        .sidebar .nav-link { color: var(--sidebar-text); padding: 12px 25px; border-radius: .375rem; margin: 0 1rem 5px; transition: all 0.2s ease; white-space: nowrap; cursor: pointer; display: flex; align-items: center;}
+        .sidebar .nav-link { color: var(--sidebar-text); padding: 12px 25px; border-radius: .375rem; margin: 0 1rem 5px; transition: all 0.2s ease; white-space: nowrap; cursor: pointer; display: flex; align-items: center; justify-content: space-between;}
         .sidebar .nav-link:hover { background-color: var(--sidebar-hover-bg); color: var(--sidebar-active-text); }
         .sidebar .nav-link.active { background: linear-gradient(87deg, #5e72e4 0, #825ee4 100%) !important; color: var(--sidebar-active-text); font-weight: 500; box-shadow: 0 7px 14px rgba(50,50,93,.1), 0 3px 6px rgba(0,0,0,.08); }
-        .sidebar .nav-link i { margin-right: 15px; width: 20px; text-align: center; font-size: .95rem; }
+        .sidebar .nav-link .nav-link-text { display: flex; align-items: center; }
+        .sidebar .nav-link .nav-link-text i { margin-right: 15px; width: 20px; text-align: center; font-size: .95rem; }
         .sidebar .user-profile { margin-top: auto; border-top: 1px solid rgba(255,255,255,0.1); padding: 15px 10px; text-align: center; }
         
         .main-content { width: 100%; padding: 30px; margin-left: 260px; transition: margin-left 0.3s ease-in-out; }
         
         .sidebar.collapsed { width: 90px; }
-        .sidebar.collapsed .logo span, .sidebar.collapsed .nav-link span, .sidebar.collapsed .user-profile div { display: none; }
+        .sidebar.collapsed .logo span, .sidebar.collapsed .nav-link span, .sidebar.collapsed .nav-link .badge, .sidebar.collapsed .user-profile div { display: none; }
         .sidebar.collapsed .logo i { margin: 0; }
         .sidebar.collapsed .nav-link { justify-content: center; }
         .sidebar.collapsed .nav-link i { margin: 0; font-size: 1.2rem; }
@@ -166,24 +167,57 @@
                 <i class="fas fa-tasks"></i> <span>DEB'S PROCUREMENT</span>
             </div>
             <div id="nav-links" class="flex-grow-1">
-                <a class="nav-link admin-nav-item" data-view="admin-dashboard-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-tachometer-alt"></i> <span>Dashboard</span></a>
-                <a class="nav-link admin-nav-item" data-view="admin-pending-reqs-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-inbox"></i> <span>Requisition Approvals</span></a>
-                <a class="nav-link admin-nav-item" data-view="admin-requirements-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-file-alt"></i> <span>All Requirements</span></a>
-                <a class="nav-link admin-nav-item" data-view="admin-bidding-history-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-history"></i> <span>Bidding History</span></a>
-                <a class="nav-link admin-nav-item" data-view="admin-awarded-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-trophy"></i> <span>Awarded Contracts</span></a>
-                <a class="nav-link admin-nav-item" data-view="admin-reports-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-chart-pie"></i> <span>Reports & Analytics</span></a>
-                <a class="nav-link admin-nav-item" data-view="admin-pending-users-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-user-check"></i> <span>User Approvals</span></a>
-                <a class="nav-link admin-nav-item" data-view="admin-user-control-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-users-cog"></i> <span>User Control</span></a>
+                <a class="nav-link admin-nav-item" data-view="admin-dashboard-view" onclick="navigateTo(this.dataset.view)">
+                    <div class="nav-link-text"><i class="fas fa-tachometer-alt"></i> <span>Dashboard</span></div>
+                </a>
+                <a class="nav-link admin-nav-item" data-view="admin-pending-reqs-view" onclick="navigateTo(this.dataset.view)">
+                    <div class="nav-link-text"><i class="fas fa-inbox"></i> <span>Requisition Approvals</span></div>
+                    <span class="badge bg-warning rounded-pill" id="badge-pending-reqs"></span>
+                </a>
+                <a class="nav-link admin-nav-item" data-view="admin-requirements-view" onclick="navigateTo(this.dataset.view)">
+                    <div class="nav-link-text"><i class="fas fa-file-alt"></i> <span>All Requirements</span></div>
+                </a>
+                <a class="nav-link admin-nav-item" data-view="admin-bidding-history-view" onclick="navigateTo(this.dataset.view)">
+                    <div class="nav-link-text"><i class="fas fa-history"></i> <span>Bidding History</span></div>
+                </a>
+                <a class="nav-link admin-nav-item" data-view="admin-awarded-view" onclick="navigateTo(this.dataset.view)">
+                    <div class="nav-link-text"><i class="fas fa-trophy"></i> <span>Awarded Contracts</span></div>
+                </a>
+                <a class="nav-link admin-nav-item" data-view="admin-reports-view" onclick="navigateTo(this.dataset.view)">
+                    <div class="nav-link-text"><i class="fas fa-chart-pie"></i> <span>Reports & Analytics</span></div>
+                </a>
+                <a class="nav-link admin-nav-item" data-view="admin-pending-users-view" onclick="navigateTo(this.dataset.view)">
+                    <div class="nav-link-text"><i class="fas fa-user-check"></i> <span>User Approvals</span></div>
+                    <span class="badge bg-warning rounded-pill" id="badge-pending-users"></span>
+                </a>
+                <a class="nav-link admin-nav-item" data-view="admin-user-control-view" onclick="navigateTo(this.dataset.view)">
+                    <div class="nav-link-text"><i class="fas fa-users-cog"></i> <span>User Control</span></div>
+                </a>
                 
-                <a class="nav-link vendor-nav-item" data-view="vendor-dashboard-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-tachometer-alt"></i> <span>Dashboard</span></a>
-                <a class="nav-link vendor-nav-item" data-view="vendor-requirements-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-clipboard-list"></i> <span>My Open Requirements</span></a>
-                <a class="nav-link vendor-nav-item" data-view="vendor-my-bids-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-gavel"></i> <span>My Bidding History</span></a>
-                <a class="nav-link vendor-nav-item" data-view="vendor-awarded-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-trophy"></i> <span>My Awarded Contracts</span></a>
+                <a class="nav-link vendor-nav-item" data-view="vendor-dashboard-view" onclick="navigateTo(this.dataset.view)">
+                     <div class="nav-link-text"><i class="fas fa-tachometer-alt"></i> <span>Dashboard</span></div>
+                </a>
+                <a class="nav-link vendor-nav-item" data-view="vendor-requirements-view" onclick="navigateTo(this.dataset.view)">
+                     <div class="nav-link-text"><i class="fas fa-clipboard-list"></i> <span>My Open Requirements</span></div>
+                </a>
+                <a class="nav-link vendor-nav-item" data-view="vendor-my-bids-view" onclick="navigateTo(this.dataset.view)">
+                     <div class="nav-link-text"><i class="fas fa-gavel"></i> <span>My Bidding History</span></div>
+                </a>
+                <a class="nav-link vendor-nav-item" data-view="vendor-awarded-view" onclick="navigateTo(this.dataset.view)">
+                     <div class="nav-link-text"><i class="fas fa-trophy"></i> <span>My Awarded Contracts</span></div>
+                </a>
                 
-                <a class="nav-link user-nav-item" data-view="user-create-req-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-edit"></i> <span>Create Requisition</span></a>
-                <a class="nav-link user-nav-item" data-view="user-status-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-history"></i> <span>My Requisition Status</span></a>
+                <a class="nav-link user-nav-item" data-view="user-create-req-view" onclick="navigateTo(this.dataset.view)">
+                    <div class="nav-link-text"><i class="fas fa-edit"></i> <span>Create Requisition</span></div>
+                </a>
+                <a class="nav-link user-nav-item" data-view="user-status-view" onclick="navigateTo(this.dataset.view)">
+                    <div class="nav-link-text"><i class="fas fa-history"></i> <span>My Requisition Status</span></div>
+                </a>
 
-                <a class="nav-link admin-nav-item user-nav-item vendor-nav-item" data-view="messaging-view" onclick="navigateTo(this.dataset.view)"><i class="fas fa-comments"></i> <span>Messages</span></a>
+                <a class="nav-link admin-nav-item user-nav-item vendor-nav-item" data-view="messaging-view" onclick="navigateTo(this.dataset.view)">
+                    <div class="nav-link-text"><i class="fas fa-comments"></i> <span>Messages</span></div>
+                    <span class="badge bg-danger rounded-pill" id="badge-unread-messages"></span>
+                </a>
             </div>
             <div class="user-profile">
                 <div>
@@ -246,11 +280,10 @@
         let loginWrapper, appContainer, mainView, headerTitle;
         let registerModal, adminActionModal, editUserModal, bulkUploadModal, advancedBulkAwardModal, reopenBiddingModal;
         let addUserModal, forcePasswordResetModal, assignVendorsModal;
-
-        // Chart instances
         let charts = {};
         
         let chatPollingInterval = null;
+        let backgroundRefreshInterval = null;
         let itemCounter = 0;
         
         const views = {
@@ -524,7 +557,11 @@
                 }
             }
         }
-        function handleLogout() { sessionStorage.clear(); window.location.reload(); }
+        function handleLogout() { 
+            if(backgroundRefreshInterval) clearInterval(backgroundRefreshInterval);
+            sessionStorage.clear(); 
+            window.location.reload(); 
+        }
         function handleRoleChange() { const isVendor = $('#reg-role').val() === 'Vendor'; $('#reg-company-wrapper').toggleClass('hidden', !isVendor); $('#reg-gstin-wrapper').toggleClass('hidden', !isVendor); $('#reg-company').prop('required', isVendor); }
         async function handleRegistration(e) { e.preventDefault(); const data = { FullName: $('#reg-fullname').val(), Email: $('#reg-email').val(), Password: $('#reg-password').val(), Role: $('#reg-role').val(), CompanyName: $('#reg-company').val(), ContactNumber: $('#reg-contact').val(), GSTIN: $('#reg-gstin').val() }; const result = await apiCall('/register', 'POST', data); if (result.success) { showToast(result.message, 'success'); registerModal.hide(); $(e.target)[0].reset(); } }
         
@@ -536,7 +573,14 @@
             $('#nav-links .nav-link').hide();
             $(`.${user.role.toLowerCase()}-nav-item`).css('display', 'flex');
             
-            fetchNotifications(); // NEW: Fetch notifications on login
+            // Start background data refresh for Admin and Vendor
+            if (user.role === 'Admin' || user.role === 'Vendor') {
+                if (backgroundRefreshInterval) clearInterval(backgroundRefreshInterval);
+                backgroundRefreshInterval = setInterval(backgroundRefreshData, 120000); // 2 minutes
+            }
+            
+            await fetchSidebarCounts();
+            await fetchNotifications();
 
             const defaultViewMap = { 'Admin': 'admin-dashboard-view', 'Vendor': 'vendor-dashboard-view', 'User': 'user-create-req-view' };
             navigateTo(defaultViewMap[user.role]);
@@ -721,7 +765,7 @@
                             </td>
                             <td>${item.quantity} ${item.unit}</td>
                             <td>${isBidded ? `<span class="badge bg-${getBadgeColor(item.my_bid_status)}">${item.my_bid_status}</span>` : `<span class="badge bg-warning">Bidding Open</span>`}</td>
-                            <td>${isBidded ? `<span class="badge bg-info">L${item.my_rank}</span>` : 'N/A'}</td>
+                            <td>${isBidded && item.my_rank ? `<span class="badge bg-info">L${item.my_rank}</span>` : 'N/A'}</td>
                         </tr>
                     `;
                     const freightValue = item.freight_required ? (item.my_freight_rate || '') : 0;
@@ -889,8 +933,8 @@
         // =========================================================
         // ================ ACTION HANDLERS ========================
         // =========================================================
-        async function approveUser(tempId) { if (!confirm('Approve this user?')) return; const result = await apiCall('/users/approve', 'POST', { temp_id: tempId }); if (result.success) { showToast('User Approved!', 'success'); load_admin_pending_users_view(); } }
-        async function handleBulkApproval(reqId) { const container = $(`#collapse-${reqId}`); const approvedItemIds = container.find('.item-check-box:checked').map((i, el) => $(el).val()).get(); const vendorAssignments = container.find('.vendor-assign-check:checked').map((i, el) => $(el).val()).get(); if(approvedItemIds.length === 0) { if(!confirm("No items selected. This will mark the requisition as processed without activating any items. Continue?")) return; } const result = await apiCall('/requisitions/approve', 'POST', { approvedItemIds, vendorAssignments, requisitionId: reqId }); if(result.success) { showToast(result.message, 'success'); load_admin_pending_reqs_view(); } }
+        async function approveUser(tempId) { if (!confirm('Approve this user?')) return; const result = await apiCall('/users/approve', 'POST', { temp_id: tempId }); if (result.success) { showToast('User Approved!', 'success'); load_admin_pending_users_view(); fetchSidebarCounts(); } }
+        async function handleBulkApproval(reqId) { const container = $(`#collapse-${reqId}`); const approvedItemIds = container.find('.item-check-box:checked').map((i, el) => $(el).val()).get(); const vendorAssignments = container.find('.vendor-assign-check:checked').map((i, el) => $(el).val()).get(); if(approvedItemIds.length === 0) { if(!confirm("No items selected. This will mark the requisition as processed without activating any items. Continue?")) return; } const result = await apiCall('/requisitions/approve', 'POST', { approvedItemIds, vendorAssignments, requisitionId: reqId }); if(result.success) { showToast(result.message, 'success'); load_admin_pending_reqs_view(); fetchSidebarCounts(); } }
         
         async function openAdminActionModal(itemId, itemName) {
             $('#adminActionModalTitle').text(`Bids for: ${itemName}`);
@@ -973,15 +1017,13 @@
                 if (!isNaN(exWorks) && exWorks > 0) {
                     const itemRow = $(this).prev('tr');
                     const item = JSON.parse(itemRow.attr('data-item'));
-                    const quantity = parseFloat(item.quantity);
                     const freight = parseFloat($(this).find('.freight-rate').val()) || 0;
                     
                     bidsToSubmit.push({
-                        original_item_ids: item.original_item_ids, // Send consolidated item IDs
-                        item_name: item.item_name, // for error message
+                        original_item_ids: item.original_item_ids, 
+                        item_name: item.item_name,
                         ex_works_rate: exWorks,
                         freight_rate: freight,
-                        bid_amount: (exWorks + freight) * quantity,
                         comments: ''
                     });
                 }
@@ -1302,7 +1344,6 @@
 
         async function downloadBiddingHistoryReport() { const result = await apiCall('/admin/bidding-history'); if(result.success) { const formattedData = result.data.map(d => ({ 'Req ID': `REQ-${d.requisition_id}-${d.item_sl_no}`, 'Item Name': d.item_name, 'Vendor Name': d.vendor_name, 'Bid Amount': d.bid_amount, 'Ex-works Rate': d.ex_works_rate, 'Freight Rate': d.freight_rate, 'Status': d.bid_status, 'Date': new Date(d.submitted_at).toLocaleString() })); exportToExcel(formattedData, 'Bidding_History_Report.xlsx'); }}
         
-        // BUG FIX: Added Quantity and Unit to the download.
         async function downloadAdminAwardedContractsReport() { 
             const result = await apiCall('/admin/awarded-contracts'); 
             if(result.success) { 
@@ -1360,6 +1401,7 @@
             }
         }
 
+        // NEW: Function to fetch notifications
         async function fetchNotifications() {
             const result = await apiCall('/notifications', 'GET', null, false, false);
             const notificationList = $('#notification-list');
@@ -1381,6 +1423,46 @@
                 notificationList.html('<li><a class="dropdown-item text-muted text-center" href="#">No new notifications</a></li>');
             }
         }
+
+        // NEW: Function for sidebar counts
+        async function fetchSidebarCounts() {
+             const result = await apiCall('/sidebar-counts', 'GET', null, false, false);
+             if (result.success) {
+                const counts = result.data;
+                // Update Messages Badge
+                $('#badge-unread-messages').text(counts.unreadMessages > 0 ? counts.unreadMessages : '').toggle(counts.unreadMessages > 0);
+                // Update Admin Badges
+                $('#badge-pending-reqs').text(counts.pendingReqs > 0 ? counts.pendingReqs : '').toggle(counts.pendingReqs > 0);
+                $('#badge-pending-users').text(counts.pendingUsers > 0 ? counts.pendingUsers : '').toggle(counts.pendingUsers > 0);
+             }
+        }
+
+        // NEW: Function for background refresh
+        async function backgroundRefreshData() {
+            const user = JSON.parse(sessionStorage.getItem('loggedInUser'));
+            if (!user) return;
+
+            // Silently refresh data without showing the main loader
+            if (user.role === 'Admin' || user.role === 'Vendor') {
+                 const currentView = $('#nav-links .nav-link.active').data('view');
+                 if (currentView === 'admin-dashboard-view') {
+                    await apiCall('/admin/dashboard-stats', 'GET', null, false, false).then(result => {
+                        if(result.success) {
+                            // Only update parts of the dashboard, not the whole view
+                            const data = result.data;
+                            $('#stats-active-items').text(data.activeItems);
+                            $('#stats-pending-users').text(data.pendingUsers);
+                            $('#stats-pending-reqs').text(data.pendingRequisitionsCount);
+                            $('#stats-no-bids').text(data.itemsWithNoBids);
+                        }
+                    });
+                 }
+            }
+            // Always refresh notifications and sidebar counts for all users
+            await fetchNotifications();
+            await fetchSidebarCounts();
+        }
+
     </script>
 </body>
 </html>
