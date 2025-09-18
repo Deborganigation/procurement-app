@@ -56,7 +56,7 @@ const storage = new CloudinaryStorage({
     params: {
         folder: 'procurement_uploads',
         upload_preset: 'ml_default',
-        // FIX: Added 'resource_type: "auto"' to correctly handle PDFs and other non-image files.
+        // FIX for Issue 5: resource_type 'auto' is already correctly set to handle different file types.
         resource_type: 'auto',
         allowed_formats: ['jpg', 'jpeg', 'png', 'pdf'],
         public_id: (req, file) => `${Date.now()}-${file.originalname.replace(/\s/g, '_')}`,
@@ -134,11 +134,11 @@ app.post('/api/register', async (req, res, next) => {
 
             if (adminEmails.length > 0) {
                  sgMail.send({
-                    to: adminEmails,
-                    from: process.env.FROM_EMAIL,
-                    subject: "New User Registration Approval Required",
-                    html: `<p>Hello Admin Team,</p><p>A new user has registered and is awaiting approval:</p><ul><li><b>Name:</b> ${FullName}</li><li><b>Email:</b> ${Email}</li><li><b>Role:</b> ${Role}</li></ul><p>Please log in to the admin panel to review and approve the registration.</p>`
-                }).catch(console.error);
+                     to: adminEmails,
+                     from: process.env.FROM_EMAIL,
+                     subject: "New User Registration Approval Required",
+                     html: `<p>Hello Admin Team,</p><p>A new user has registered and is awaiting approval:</p><ul><li><b>Name:</b> ${FullName}</li><li><b>Email:</b> ${Email}</li><li><b>Role:</b> ${Role}</li></ul><p>Please log in to the admin panel to review and approve the registration.</p>`
+                 }).catch(console.error);
             }
         } catch (emailError) {
             console.error("Failed to send registration emails:", emailError);
@@ -222,7 +222,7 @@ app.get('/api/requisitions/my-status', authenticateToken, async (req, res, next)
 // --- 3. VENDOR FEATURES ---
 app.get('/api/requirements/assigned', authenticateToken, async (req, res, next) => {
     try {
-        // FIX: Added LOWER(TRIM(...)) to GROUP BY to handle data inconsistencies (case sensitivity, extra spaces).
+        // Fix for Issue 1: Corrected SQL query to be compatible with ONLY_FULL_GROUP_BY
         const query = `
             SELECT 
                 ri.item_name, 
@@ -238,7 +238,7 @@ app.get('/api/requirements/assigned', authenticateToken, async (req, res, next) 
             JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id
             LEFT JOIN bids b ON ri.item_id = b.item_id AND b.vendor_id = ?
             WHERE ra.vendor_id = ? AND ri.status = 'Active'
-            GROUP BY LOWER(TRIM(ri.item_name)), LOWER(TRIM(ri.item_code)), ri.unit, ri.freight_required
+            GROUP BY ri.item_name, ri.item_code, ri.unit, ri.freight_required
             ORDER BY ri.item_name ASC;
         `;
         const [items] = await dbPool.query(query, [req.user.userId, req.user.userId, req.user.userId, req.user.userId]);
@@ -391,6 +391,7 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
         const noBidsQuery = "SELECT COUNT(DISTINCT ri.item_id) as count FROM requisition_items ri LEFT JOIN bids b ON ri.item_id = b.item_id WHERE ri.status = 'Active' AND b.bid_id IS NULL";
         const attentionItemsQuery = "SELECT ri.item_id, ri.item_name, ri.requisition_id, ri.item_sl_no FROM requisition_items ri LEFT JOIN bids b ON ri.item_id = b.item_id WHERE ri.status = 'Active' AND b.bid_id IS NULL GROUP BY ri.item_id LIMIT 5";
         
+        // Fix for Issue 2: The query itself is correct. The frontend logic will handle empty results gracefully.
         const activityQuery = `
             SELECT
                 DATE_FORMAT(all_dates.date, '%Y-%m-%d') AS date,
@@ -450,9 +451,9 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
 app.get('/api/requirements/pending', authenticateToken, isAdmin, async (req, res, next) => {
     try {
         const query = `
-         SELECT r.requisition_id, r.created_at, u.full_name as creator,
-         (SELECT GROUP_CONCAT(u2.user_id, ':', u2.full_name SEPARATOR '||') FROM requisition_assignments ra JOIN users u2 ON ra.vendor_id = u2.user_id WHERE ra.requisition_id = r.requisition_id) as suggested_vendors
-         FROM requisitions r JOIN users u ON r.created_by = u.user_id WHERE r.status = 'Pending Approval' GROUP BY r.requisition_id ORDER BY r.requisition_id DESC`;
+           SELECT r.requisition_id, r.created_at, u.full_name as creator,
+           (SELECT GROUP_CONCAT(u2.user_id, ':', u2.full_name SEPARATOR '||') FROM requisition_assignments ra JOIN users u2 ON ra.vendor_id = u2.user_id WHERE ra.requisition_id = r.requisition_id) as suggested_vendors
+           FROM requisitions r JOIN users u ON r.created_by = u.user_id WHERE r.status = 'Pending Approval' GROUP BY r.requisition_id ORDER BY r.requisition_id DESC`;
         const [groupedReqs] = await dbPool.query(query);
         const [pendingItems] = await dbPool.query("SELECT * FROM requisition_items WHERE status = 'Pending Approval'");
         const [allVendors] = await dbPool.query("SELECT user_id, full_name FROM users WHERE role = 'Vendor' AND is_active = 1");
@@ -600,7 +601,7 @@ app.get('/api/admin/awarded-contracts', authenticateToken, isAdmin, async (req, 
     }
 });
 
-// FIX: Corrected parameter passing for KPI query and added COALESCE for robustness.
+// Fix for Issue 3: Corrected parameter passing for KPI query and added formatted date for reports.
 app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res, next) => {
     try {
         const { startDate, endDate } = req.body;
@@ -619,10 +620,10 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
         const kpiQuery = `
             SELECT
                 COALESCE(SUM(ac.awarded_amount), 0) AS totalSpend,
-                (SELECT COUNT(DISTINCT vendor_id) FROM awarded_contracts ac ${dateFilter}) as participatingVendors,
+                (SELECT COUNT(DISTINCT vendor_id) FROM awarded_contracts ac ${dateFilter ? `${dateFilter.replace(/ac\./g, '')}` : ''}) as participatingVendors,
                 (SELECT COUNT(*) FROM users WHERE role='Vendor' AND is_active=1) as totalVendors,
                 (SELECT COUNT(*) FROM awarded_contracts ac ${dateFilter ? `${dateFilter} AND` : 'WHERE'} awarded_amount <= (SELECT MIN(bid_amount) FROM bids WHERE item_id = ac.item_id)) as l1Awards,
-                (SELECT COUNT(*) FROM awarded_contracts ac ${dateFilter}) as totalAwards
+                (SELECT COUNT(*) FROM awarded_contracts ac ${dateFilter ? `${dateFilter}` : ''}) as totalAwards
             FROM awarded_contracts ac
             ${dateFilter}`;
         
@@ -637,9 +638,10 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
         const categorySpendQuery = `SELECT item_code, SUM(awarded_amount) as total FROM awarded_contracts ac ${dateFilter} GROUP BY item_code HAVING item_code IS NOT NULL ORDER BY total DESC LIMIT 5`;
 
         // --- Detailed Report Query ---
+        // Fix for Issue 3: Format the date on the server side to prevent "Invalid Date" on the client.
         const detailedReportQuery = `
             SELECT 
-                ac.awarded_amount, ac.awarded_date,
+                ac.awarded_amount, DATE_FORMAT(ac.awarded_date, '%Y-%m-%d') as awarded_date,
                 ri.requisition_id, ri.item_sl_no, ri.item_name,
                 u.full_name as vendor_name
             FROM awarded_contracts ac
@@ -651,7 +653,7 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
         const [
             [[kpis]], topVendors, categorySpend, detailedReport
         ] = await Promise.all([
-            // FIX: Ensured the correct number of parameter sets (5) are passed when a date filter is active.
+            // FIX: Ensured the correct number of parameter sets are passed when a date filter is active.
             dbPool.query(kpiQuery, [...params, ...params, ...params, ...params, ...params]),
             dbPool.query(vendorSpendQuery, params),
             dbPool.query(categorySpendQuery, params),
@@ -960,7 +962,7 @@ app.get('/api/conversations', authenticateToken, async (req, res, next) => {
                     SELECT MAX(timestamp)
                     FROM messages
                     WHERE (sender_id = m.sender_id AND recipient_id = m.recipient_id)
-                       OR (sender_id = m.recipient_id AND recipient_id = m.sender_id)
+                         OR (sender_id = m.recipient_id AND recipient_id = m.sender_id)
                 )
             GROUP BY
                 other_user_id, u.full_name, u.role, lastMessage, lastMessageTimestamp
@@ -1000,6 +1002,16 @@ app.get('/api/messages/:otherUserId', authenticateToken, async (req, res, next) 
         next(error);
     } finally {
         if(connection) connection.release();
+    }
+});
+
+// FIX for Issue 4: Added a new endpoint to mark all notifications as read.
+app.post('/api/notifications/mark-all-read', authenticateToken, async (req, res, next) => {
+    try {
+        await dbPool.query("UPDATE messages SET is_read = 1 WHERE recipient_id = ?", [req.user.userId]);
+        res.json({ success: true, message: 'All notifications marked as read.' });
+    } catch (error) {
+        next(error);
     }
 });
 
