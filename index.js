@@ -315,14 +315,15 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
         const needsBidQuery = "SELECT COUNT(DISTINCT ri.item_code) as count FROM requisition_items ri JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id WHERE ra.vendor_id = ? AND ri.status = 'Active' AND ri.item_id NOT IN (SELECT item_id FROM bids WHERE vendor_id = ?)";
         const l1BidsQuery = "SELECT COUNT(DISTINCT b.item_id) as count FROM bids b WHERE b.vendor_id = ? AND b.bid_amount = (SELECT MIN(bid_amount) FROM bids WHERE item_id = b.item_id)";
         
-        // FIX: Replaced b.item_name with ri.item_name to get the correct name from the joined table.
+        // FIX: Replaced 'b.item_name' with 'ri.item_name' to get the correct name from the joined 'requisition_items' table.
         const recentBidsQuery = `SELECT b.bid_amount, b.bid_status, ri.item_name FROM bids b JOIN requisition_items ri ON b.item_id = ri.item_id WHERE b.vendor_id = ? ORDER BY b.submitted_at DESC LIMIT 5`;
         
         const avgRankQuery = `SELECT AVG(\`rank\`) as avg_rank FROM (SELECT b.bid_amount, (SELECT COUNT(*) + 1 FROM bids b2 WHERE b2.item_id = b.item_id AND b2.bid_amount < b.bid_amount) as \`rank\` FROM bids b WHERE b.vendor_id = ? AND b.bid_status IN ('Submitted', 'Awarded', 'Rejected') ) as ranked_bids`;
         const bidCountQuery = "SELECT COUNT(DISTINCT item_id) as count FROM bids WHERE vendor_id = ?";
-
+        
+        // Correctly destructuring the promise results
         const [
-            [[assigned]], [[submitted]], [[won]], [[needsBid]], [[l1Bids]], recentBids, [[avgRankResult]], [[bidCountResult]],
+            [assignedRows], [submittedRows], [wonRows], [needsBidRows], [l1BidsRows], recentBids, [avgRankResultRows], [bidCountResultRows],
         ] = await Promise.all([
             dbPool.query(assignedQuery, [vendorId]),
             dbPool.query(submittedQuery, [vendorId]),
@@ -333,6 +334,14 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
             dbPool.query(avgRankQuery, [vendorId]),
             dbPool.query(bidCountQuery, [vendorId]),
         ]);
+
+        const assigned = assignedRows[0];
+        const submitted = submittedRows[0];
+        const won = wonRows[0];
+        const needsBid = needsBidRows[0];
+        const l1Bids = l1BidsRows[0];
+        const avgRankResult = avgRankResultRows[0];
+        const bidCountResult = bidCountResultRows[0];
 
         const totalBids = bidCountResult.count;
         const contractsWonCount = won.count;
@@ -412,9 +421,8 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
         `;
 
         // FIX: Corrected the destructuring syntax for Promise.all.
-        // It should be `const [result1, result2, ...]` not `const [[result1]], [[result2]], ...`
         const [
-            [activeItems], [pendingUsers], [awarded], [pendingReqs],
+            [activeItemsRows], [pendingUsersRows], [awardedRows], [pendingReqsRows],
             latestReqs, notifications, reqTrends, biddingActivity
         ] = await Promise.all([
             dbPool.query(activeItemsQuery), 
@@ -426,7 +434,12 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
             dbPool.query(reqTrendsQuery),
             dbPool.query(biddingActivityQuery)
         ]);
-        
+
+        const activeItems = activeItemsRows[0];
+        const pendingUsers = pendingUsersRows[0];
+        const awarded = awardedRows[0];
+        const pendingReqs = pendingReqsRows[0];
+
         const reqTrendsChart = {
             labels: reqTrends.map(row => row.month),
             data: reqTrends.map(row => row.count)
@@ -440,10 +453,10 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
         res.json({
             success: true,
             data: { 
-                activeItems: activeItems[0].count, 
-                pendingUsers: pendingUsers[0].count, 
-                awardedContracts: awarded[0].count,
-                pendingRequisitionsCount: pendingReqs[0].count,
+                activeItems: activeItems.count, 
+                pendingUsers: pendingUsers.count, 
+                awardedContracts: awarded.count,
+                pendingRequisitionsCount: pendingReqs.count,
                 latestRequisitions: latestReqs,
                 notifications: notifications,
                 charts: {
