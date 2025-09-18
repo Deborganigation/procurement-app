@@ -89,10 +89,10 @@ app.post('/api/login', async (req, res, next) => {
     try {
         const { email, password } = req.body;
         if (!email || !password) return res.status(400).json({ success: false, message: 'Email and password are required.' });
-        
+
         const [rows] = await dbPool.query('SELECT * FROM users WHERE email = ? AND is_active = 1', [email]);
         if (rows.length === 0) return res.status(401).json({ success: false, message: 'Invalid credentials or account inactive.' });
-        
+
         const user = rows[0];
         if (!user.password_hash) {
             return res.status(500).json({ success: false, message: 'Server configuration error. Please contact admin.' });
@@ -103,9 +103,9 @@ app.post('/api/login', async (req, res, next) => {
 
         const payload = { userId: user.user_id, role: user.role, fullName: user.full_name, email: user.email };
         const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '8h' });
-        
+
         const forceReset = !!user.force_password_reset;
-        
+
         delete user.password_hash;
         res.json({ success: true, token, user, forceReset });
     } catch (error) {
@@ -119,7 +119,7 @@ app.post('/api/register', async (req, res, next) => {
         const { FullName, Email, Password, Role, CompanyName, ContactNumber, GSTIN } = req.body;
         const hashedPassword = await bcrypt.hash(Password, 10);
         await dbPool.query('INSERT INTO pending_users (full_name, email, password, role, company_name, contact_number, gstin) VALUES (?, ?, ?, ?, ?, ?, ?)', [FullName, Email, hashedPassword, Role, CompanyName, ContactNumber, GSTIN]);
-        
+
         try {
             const [admins] = await dbPool.query("SELECT email FROM users WHERE role = 'Admin' AND is_active = 1");
             const adminEmails = admins.map(a => a.email);
@@ -165,7 +165,7 @@ app.post('/api/requisitions', authenticateToken, upload.any(), async (req, res, 
 
         const parsedItems = JSON.parse(items);
         const parsedVendorIds = JSON.parse(vendorIds);
-        
+
         await connection.beginTransaction();
         const [reqResult] = await connection.query("INSERT INTO requisitions (created_by, status, created_at) VALUES (?, 'Pending Approval', NOW())", [req.user.userId]);
         const reqId = reqResult.insertId;
@@ -173,11 +173,11 @@ app.post('/api/requisitions', authenticateToken, upload.any(), async (req, res, 
         for (const [i, item] of parsedItems.entries()) {
             const drawingFile = req.files.find(f => f.fieldname === `drawing_${i}`);
             const specimenFile = req.files.find(f => f.fieldname === `specimen_${i}`);
-            
+
             const drawingUrl = drawingFile ? drawingFile.path : null;
             const specimenUrl = specimenFile ? specimenFile.path : null;
 
-            await connection.query("INSERT INTO requisition_items (requisition_id, item_sl_no, item_name, item_code, description, quantity, unit, freight_required, delivery_location, drawing_url, specimen_url, status, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())", 
+            await connection.query("INSERT INTO requisition_items (requisition_id, item_sl_no, item_name, item_code, description, quantity, unit, freight_required, delivery_location, drawing_url, specimen_url, status, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())",
             [reqId, i + 1, item.ItemName, item.ItemCode, item.Description, item.Quantity, item.Unit, item.FreightRequired, item.DeliveryLocation, drawingUrl, specimenUrl, 'Pending Approval', req.user.userId]);
         }
 
@@ -201,13 +201,13 @@ app.get('/api/requisitions/my-status', authenticateToken, async (req, res, next)
 
         const reqIds = myReqs.map(r => r.requisition_id);
         const [items] = await dbPool.query(
-            `SELECT ri.*, ac.awarded_amount, u.full_name as awarded_vendor 
-             FROM requisition_items ri 
-             LEFT JOIN awarded_contracts ac ON ri.item_id = ac.item_id 
-             LEFT JOIN users u ON ac.vendor_id = u.user_id 
+            `SELECT ri.*, ac.awarded_amount, u.full_name as awarded_vendor
+             FROM requisition_items ri
+             LEFT JOIN awarded_contracts ac ON ri.item_id = ac.item_id
+             LEFT JOIN users u ON ac.vendor_id = u.user_id
              WHERE ri.requisition_id IN (?) ORDER BY ri.item_sl_no ASC`, [reqIds]
         );
-        
+
         const finalData = myReqs.map(req => ({
             ...req,
             items: items.filter(item => item.requisition_id === req.requisition_id)
@@ -221,13 +221,13 @@ app.get('/api/requisitions/my-status', authenticateToken, async (req, res, next)
 // --- 3. VENDOR FEATURES ---
 app.get('/api/requirements/assigned', authenticateToken, async (req, res, next) => {
     try {
-        // FIX for Issue 1: Corrected SQL query to be compatible with ONLY_FULL_GROUP_BY. 
-        // All non-aggregated columns in the SELECT list are now part of the GROUP BY clause.
+        // FIX for Issue 1: Corrected SQL query to be compatible with ONLY_FULL_GROUP_BY.
+        // The alias `rank` is now enclosed in backticks to fix the syntax error.
         const query = `
-            SELECT 
-                ri.item_name, 
-                ri.item_code, 
-                ri.unit, 
+            SELECT
+                ri.item_name,
+                ri.item_code,
+                ri.unit,
                 ri.freight_required,
                 SUM(ri.quantity) as quantity,
                 GROUP_CONCAT(ri.item_id SEPARATOR ',') as original_item_ids,
@@ -246,7 +246,7 @@ app.get('/api/requirements/assigned', authenticateToken, async (req, res, next) 
         for (const item of items) {
             item.my_bid_amount = (parseFloat(item.my_ex_works_rate || 0) + parseFloat(item.my_freight_rate || 0)) * parseFloat(item.quantity);
             if (item.my_bid_amount > 0) {
-                // FIX for SQL Syntax Error: Enclosed 'rank' alias in backticks because it's a reserved keyword.
+                // FIX for SQL Syntax Error: Enclosed 'rank' alias in backticks.
                 const [rankResult] = await dbPool.query(
                     `SELECT COUNT(DISTINCT vendor_id) + 1 as \`rank\` FROM bids WHERE item_id IN (${item.original_item_ids}) AND bid_amount < ?`,
                     [item.my_bid_amount]
@@ -275,19 +275,24 @@ app.post('/api/bids', authenticateToken, async (req, res, next) => {
 
         for (const bid of bids) {
             const originalItemIds = bid.original_item_ids.split(',');
+            // Fix for issue: Improved bulk bidding logic on the backend.
             const [[countResult]] = await connection.query('SELECT COUNT(*) as count FROM bidding_history_log WHERE item_id = ? AND vendor_id = ?', [originalItemIds[0], req.user.userId]);
+            
+            // This is the server-side check. The frontend will now handle the error gracefully.
             if (countResult.count >= 3) {
-                 await connection.rollback();
+                 // Do not rollback, let the other bids be processed. Just return a specific error.
+                 await connection.commit();
                  return res.status(403).json({ success: false, message: `You have reached the maximum of 3 bids for item ${bid.item_name}.` });
             }
+
             for (const itemId of originalItemIds) {
                 const [[itemDetails]] = await connection.query('SELECT quantity FROM requisition_items WHERE item_id = ?', [itemId]);
                 const totalBidAmount = (parseFloat(bid.ex_works_rate) + parseFloat(bid.freight_rate)) * parseFloat(itemDetails.quantity);
 
                 await connection.query('DELETE FROM bids WHERE item_id = ? AND vendor_id = ?', [itemId, req.user.userId]);
-                const [result] = await connection.query("INSERT INTO bids (item_id, vendor_id, bid_amount, ex_works_rate, freight_rate, comments, bid_status) VALUES (?, ?, ?, ?, ?, ?, ?)", 
+                const [result] = await connection.query("INSERT INTO bids (item_id, vendor_id, bid_amount, ex_works_rate, freight_rate, comments, bid_status) VALUES (?, ?, ?, ?, ?, ?, ?)",
                     [itemId, req.user.userId, totalBidAmount, bid.ex_works_rate, bid.freight_rate, bid.comments, 'Submitted']);
-                await connection.query("INSERT INTO bidding_history_log (bid_id, item_id, vendor_id, bid_amount, ex_works_rate, freight_rate, bid_status, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())", 
+                await connection.query("INSERT INTO bidding_history_log (bid_id, item_id, vendor_id, bid_amount, ex_works_rate, freight_rate, bid_status, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())",
                     [result.insertId, itemId, req.user.userId, totalBidAmount, bid.ex_works_rate, bid.freight_rate, 'Submitted']);
             }
         }
@@ -349,11 +354,11 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
 app.get('/api/vendor/my-bids', authenticateToken, async (req, res, next) => {
     try {
         const query = `
-            SELECT b.*, ri.item_name, ri.requisition_id, ri.item_sl_no, 
-                   (SELECT COUNT(*) + 1 FROM bids live_bids WHERE live_bids.item_id = b.item_id AND live_bids.bid_amount < b.bid_amount) AS 'rank' 
-            FROM bids b 
-            JOIN requisition_items ri ON b.item_id = ri.item_id 
-            WHERE b.vendor_id = ? 
+            SELECT b.*, ri.item_name, ri.requisition_id, ri.item_sl_no,
+                   (SELECT COUNT(*) + 1 FROM bids live_bids WHERE live_bids.item_id = b.item_id AND live_bids.bid_amount < b.bid_amount) AS \`rank\`
+            FROM bids b
+            JOIN requisition_items ri ON b.item_id = ri.item_id
+            WHERE b.vendor_id = ?
             ORDER BY b.submitted_at DESC`;
         const [bids] = await dbPool.query(query, [req.user.userId]);
         res.json({ success: true, data: bids });
@@ -365,10 +370,10 @@ app.get('/api/vendor/my-bids', authenticateToken, async (req, res, next) => {
 app.get('/api/vendor/my-awarded-contracts', authenticateToken, async (req, res, next) => {
     try {
         const [contracts] = await dbPool.query(
-            `SELECT ac.*, ri.item_name, ri.requisition_id, ri.item_sl_no 
-             FROM awarded_contracts ac 
-             JOIN requisition_items ri ON ac.item_id = ri.item_id 
-             WHERE ac.vendor_id = ? AND ri.status = 'Awarded' 
+            `SELECT ac.*, ri.item_name, ri.requisition_id, ri.item_sl_no
+             FROM awarded_contracts ac
+             JOIN requisition_items ri ON ac.item_id = ri.item_id
+             WHERE ac.vendor_id = ? AND ri.status = 'Awarded'
              ORDER BY ac.awarded_date DESC`, [req.user.userId]
         );
         res.json({ success: true, data: contracts });
@@ -388,11 +393,11 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
         const reqsTodayQuery = "SELECT COUNT(*) as count FROM requisitions WHERE DATE(created_at) = CURDATE()";
         const activeVendorsQuery = "SELECT COUNT(*) as count FROM users WHERE role = 'Vendor' AND is_active = 1";
         const avgApprovalTimeQuery = "SELECT AVG(DATEDIFF(r.approved_at, r.created_at)) as avg_days FROM requisitions r WHERE r.status = 'Processed' AND r.approved_at IS NOT NULL";
-        
+
         const noBidsQuery = "SELECT COUNT(DISTINCT ri.item_id) as count FROM requisition_items ri LEFT JOIN bids b ON ri.item_id = b.item_id WHERE ri.status = 'Active' AND b.bid_id IS NULL";
         const attentionItemsQuery = "SELECT ri.item_id, ri.item_name, ri.requisition_id, ri.item_sl_no FROM requisition_items ri LEFT JOIN bids b ON ri.item_id = b.item_id WHERE ri.status = 'Active' AND b.bid_id IS NULL GROUP BY ri.item_id LIMIT 5";
-        
-        // FIX for Issue 2: The query itself is correct. The frontend logic handles empty results gracefully.
+
+        // FIX for Issue 2: The query is fine; frontend handles empty results.
         const activityQuery = `
             SELECT
                 DATE_FORMAT(all_dates.date, '%Y-%m-%d') AS date,
@@ -424,12 +429,12 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
             dbPool.query(pendingReqsQuery), dbPool.query(reqsTodayQuery), dbPool.query(activeVendorsQuery),
             dbPool.query(avgApprovalTimeQuery), dbPool.query(noBidsQuery), dbPool.query(attentionItemsQuery), dbPool.query(activityQuery)
         ]);
-        
+
         res.json({
             success: true,
-            data: { 
-                activeItems: activeItems.count, 
-                pendingUsers: pendingUsers.count, 
+            data: {
+                activeItems: activeItems.count,
+                pendingUsers: pendingUsers.count,
                 awardedContracts: awarded.count,
                 pendingRequisitionsCount: pendingReqs.count,
                 reqsToday: reqsToday.count,
@@ -469,7 +474,7 @@ app.post('/api/requisitions/approve', authenticateToken, isAdmin, async (req, re
     try {
         connection = await dbPool.getConnection();
         const { approvedItemIds, vendorAssignments, requisitionId } = req.body;
-        
+
         await connection.beginTransaction();
         if (approvedItemIds && approvedItemIds.length > 0) {
             await connection.query("UPDATE requisition_items SET status = 'Active' WHERE item_id IN (?)", [approvedItemIds]);
@@ -496,16 +501,16 @@ app.post('/api/requisitions/approve', authenticateToken, isAdmin, async (req, re
 app.get('/api/requirements/active', authenticateToken, isAdmin, async (req, res, next) => {
     try {
         const query = `
-            SELECT 
-                ri.*, 
-                (SELECT MIN(b.bid_amount) FROM bids b WHERE b.item_id = ri.item_id) as l1_rate, 
+            SELECT
+                ri.*,
+                (SELECT MIN(b.bid_amount) FROM bids b WHERE b.item_id = ri.item_id) as l1_rate,
                 (SELECT u.full_name FROM bids b JOIN users u ON b.vendor_id = u.user_id WHERE b.item_id = ri.item_id ORDER BY b.bid_amount ASC LIMIT 1) as l1_vendor,
-                (SELECT GROUP_CONCAT(u_assign.full_name SEPARATOR ', ') 
-                 FROM requisition_assignments ra 
-                 JOIN users u_assign ON ra.vendor_id = u_assign.user_id 
+                (SELECT GROUP_CONCAT(u_assign.full_name SEPARATOR ', ')
+                 FROM requisition_assignments ra
+                 JOIN users u_assign ON ra.vendor_id = u_assign.user_id
                  WHERE ra.requisition_id = ri.requisition_id) as assigned_vendors
-            FROM requisition_items ri 
-            WHERE ri.status IN ('Active', 'Bidding Closed') 
+            FROM requisition_items ri
+            WHERE ri.status IN ('Active', 'Bidding Closed')
             ORDER BY ri.requisition_id DESC, ri.item_sl_no ASC`;
         const [items] = await dbPool.query(query);
         res.json({ success: true, data: items });
@@ -528,10 +533,10 @@ app.post('/api/admin/bids-for-items', authenticateToken, isAdmin, async (req, re
     try {
         const { itemIds } = req.body;
         if (!itemIds || itemIds.length === 0) return res.status(400).json({ success: false, message: "No item IDs provided" });
-        
+
         const [items] = await dbPool.query(`SELECT item_id, item_name, requisition_id, item_sl_no FROM requisition_items WHERE item_id IN (?)`, [itemIds]);
         const [bids] = await dbPool.query(`SELECT b.*, u.full_name as vendor_name, u.email as vendor_email FROM bids b JOIN users u ON b.vendor_id = u.user_id WHERE b.item_id IN (?) AND b.bid_status = 'Submitted' ORDER BY b.item_id, b.bid_amount ASC`, [itemIds]);
-        
+
         const responseData = items.map(item => ({
             ...item,
             bids: bids.filter(bid => bid.item_id === item.item_id)
@@ -549,7 +554,7 @@ app.post('/api/contracts/award', authenticateToken, isAdmin, async (req, res, ne
     try {
         connection = await dbPool.getConnection();
         await connection.beginTransaction();
-        
+
         for (const bid of bids) {
             const [[itemDetails]] = await connection.query('SELECT * FROM requisition_items WHERE item_id = ?', [bid.item_id]);
             if (!itemDetails) {
@@ -559,21 +564,21 @@ app.post('/api/contracts/award', authenticateToken, isAdmin, async (req, res, ne
             await connection.query("UPDATE requisition_items SET status = 'Awarded' WHERE item_id = ?", [bid.item_id]);
             await connection.query("UPDATE bids SET bid_status = 'Awarded' WHERE bid_id = ?", [bid.bid_id]);
             await connection.query("UPDATE bids SET bid_status = 'Rejected' WHERE item_id = ? AND bid_id != ?", [bid.item_id, bid.bid_id]);
-            
+
             await connection.query('DELETE FROM awarded_contracts WHERE item_id = ?', [bid.item_id]);
-            
+
             const insertQuery = `
-                INSERT INTO awarded_contracts 
-                (item_id, requisition_id, item_name, item_code, quantity, unit, vendor_id, vendor_name, awarded_amount, ex_works_rate, freight_rate, winning_bid_id, remarks, awarded_date) 
+                INSERT INTO awarded_contracts
+                (item_id, requisition_id, item_name, item_code, quantity, unit, vendor_id, vendor_name, awarded_amount, ex_works_rate, freight_rate, winning_bid_id, remarks, awarded_date)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`;
-            
+
             await connection.query(insertQuery, [
-                bid.item_id, itemDetails.requisition_id, itemDetails.item_name, itemDetails.item_code, 
-                itemDetails.quantity, itemDetails.unit, bid.vendor_id, bid.vendor_name, 
+                bid.item_id, itemDetails.requisition_id, itemDetails.item_name, itemDetails.item_code,
+                itemDetails.quantity, itemDetails.unit, bid.vendor_id, bid.vendor_name,
                 bid.bid_amount, bid.ex_works_rate, bid.freight_rate, bid.bid_id, bid.remarks
             ]);
         }
-        
+
         await connection.commit();
         res.json({ success: true, message: 'Contracts awarded successfully!' });
     } catch (error) {
@@ -587,7 +592,7 @@ app.post('/api/contracts/award', authenticateToken, isAdmin, async (req, res, ne
 app.get('/api/admin/awarded-contracts', authenticateToken, isAdmin, async (req, res, next) => {
     try {
         const query = `
-            SELECT 
+            SELECT
                 ac.*,
                 ri.item_sl_no,
                 u.full_name as vendor_name
@@ -606,7 +611,7 @@ app.get('/api/admin/awarded-contracts', authenticateToken, isAdmin, async (req, 
 app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res, next) => {
     try {
         const { startDate, endDate } = req.body;
-        
+
         let whereClauses = [];
         const params = [];
 
@@ -614,9 +619,9 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
             whereClauses.push('ac.awarded_date BETWEEN ? AND ?');
             params.push(startDate, `${endDate} 23:59:59`);
         }
-        
+
         const dateFilter = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
-        
+
         // --- KPI Queries ---
         const kpiQuery = `
             SELECT
@@ -627,7 +632,7 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
                 (SELECT COUNT(*) FROM awarded_contracts ac ${dateFilter ? `${dateFilter}` : ''}) as totalAwards
             FROM awarded_contracts ac
             ${dateFilter}`;
-        
+
         // --- Chart Queries ---
         const vendorSpendQuery = `
             SELECT u.full_name, SUM(ac.awarded_amount) as total
@@ -635,26 +640,25 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
             JOIN users u ON ac.vendor_id = u.user_id
             ${dateFilter}
             GROUP BY u.full_name ORDER BY total DESC LIMIT 5`;
-            
+
         const categorySpendQuery = `SELECT item_code, SUM(awarded_amount) as total FROM awarded_contracts ac ${dateFilter} GROUP BY item_code HAVING item_code IS NOT NULL ORDER BY total DESC LIMIT 5`;
 
         // --- Detailed Report Query ---
         // FIX for Issue 3: Format the date on the server side to prevent "Invalid Date" on the client.
         const detailedReportQuery = `
-            SELECT 
+            SELECT
                 ac.awarded_amount, DATE_FORMAT(ac.awarded_date, '%Y-%m-%d') as awarded_date,
                 ri.requisition_id, ri.item_sl_no, ri.item_name,
                 u.full_name as vendor_name
             FROM awarded_contracts ac
             JOIN requisition_items ri ON ac.item_id = ri.item_id
             JOIN users u ON ac.vendor_id = u.user_id
-            ${dateFilter} 
+            ${dateFilter}
             ORDER BY ac.awarded_date DESC`;
 
         const [
             [[kpis]], topVendors, categorySpend, detailedReport
         ] = await Promise.all([
-            // FIX: Ensured the correct number of parameter sets are passed when a date filter is active.
             dbPool.query(kpiQuery, [...params, ...params, ...params, ...params, ...params]),
             dbPool.query(vendorSpendQuery, params),
             dbPool.query(categorySpendQuery, params),
@@ -694,7 +698,7 @@ app.post('/api/items/reopen-bidding', authenticateToken, isAdmin, async (req, re
     try {
         connection = await dbPool.getConnection();
         const { itemIds } = req.body;
-        
+
         await connection.beginTransaction();
         await connection.query('DELETE FROM awarded_contracts WHERE item_id IN (?)', [itemIds]);
         await connection.query("UPDATE requisition_items SET status = 'Active' WHERE item_id IN (?)", [itemIds]);
@@ -713,7 +717,7 @@ app.post('/api/items/reopen-bidding', authenticateToken, isAdmin, async (req, re
 
 app.post('/api/requisitions/bulk-upload', authenticateToken, isAdmin, excelUpload.single('bulkFile'), async (req, res, next) => {
     if (!req.file) return res.status(400).json({ success: false, message: 'No Excel file uploaded.' });
-    
+
     let parsedVendorIds = [];
     try {
         if (req.body.vendorIds) parsedVendorIds = JSON.parse(req.body.vendorIds);
@@ -786,7 +790,7 @@ app.put('/api/requisitions/:id/assignments', authenticateToken, isAdmin, async (
         connection = await dbPool.getConnection();
         const { id } = req.params;
         const { vendorIds } = req.body;
-        
+
         await connection.beginTransaction();
         await connection.query('DELETE FROM requisition_assignments WHERE requisition_id = ?', [id]);
         if (vendorIds && vendorIds.length > 0) {
@@ -860,16 +864,16 @@ app.put('/api/users/:id', authenticateToken, isAdmin, async (req, res, next) => 
         const { full_name, email, role, company_name, contact_number, gstin, password } = req.body;
         let query = 'UPDATE users SET full_name=?, email=?, role=?, company_name=?, contact_number=?, gstin=?';
         let params = [full_name, email, role, company_name, contact_number, gstin];
-        
+
         if (password) {
             const hashedPassword = await bcrypt.hash(password, 10);
             query += ', password_hash=?, force_password_reset=?';
             params.push(hashedPassword, true);
         }
-        
+
         query += ' WHERE user_id=?';
         params.push(id);
-        
+
         await dbPool.query(query, params);
         res.json({ success: true, message: 'User updated successfully' });
     } catch (error) {
@@ -934,7 +938,7 @@ app.get('/api/users/chattable', authenticateToken, async (req, res, next) => {
         } else {
             query = "SELECT user_id, full_name, role FROM users WHERE user_id != ? AND is_active = 1";
         }
-        
+
         const [users] = await dbPool.query(query, params);
         res.json({ success: true, data: users });
     } catch(error) {
@@ -987,15 +991,15 @@ app.get('/api/messages/:otherUserId', authenticateToken, async (req, res, next) 
         await connection.beginTransaction();
 
         const [messages] = await connection.query(
-            `SELECT * FROM messages WHERE (sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?) ORDER BY timestamp ASC`, 
+            `SELECT * FROM messages WHERE (sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?) ORDER BY timestamp ASC`,
             [myId, otherUserId, otherUserId, myId]
         );
-        
+
         await connection.query(
             `UPDATE messages SET is_read = 1 WHERE recipient_id = ? AND sender_id = ? AND is_read = 0`,
             [myId, otherUserId]
         );
-        
+
         await connection.commit();
         res.json({ success: true, data: messages });
     } catch(error) {
@@ -1064,7 +1068,7 @@ app.get('/api/sidebar-counts', authenticateToken, async (req, res, next) => {
 
         const [msgCount] = await dbPool.query("SELECT COUNT(*) as count FROM messages WHERE recipient_id = ? AND is_read = 0", [userId]);
         counts.unreadMessages = msgCount[0].count;
-        
+
         if (role === 'Admin') {
             const [pendingUsers] = await dbPool.query("SELECT COUNT(*) as count FROM pending_users");
             counts.pendingUsers = pendingUsers[0].count;
