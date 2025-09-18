@@ -116,6 +116,7 @@
             gap: 1rem;
             align-items: end;
         }
+        .bidding-row .not-applicable { background-color: #e9ecef; color: #6c757d; }
 
         /* NEW WHATSAPP CHAT STYLES */
         #chat-messages { background-color: var(--whatsapp-bg); display: flex; flex-direction: column; gap: 12px; }
@@ -641,7 +642,7 @@
                 
                 accordion.append(`
                     <div class="accordion-item">
-                        <h2 class="accordion-header"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${reqId}">Req ID: REQ-${reqId} (By: ${req.creator} on ${new Date(req.created_at).toLocaleDateString()}) - ${reqItems.length} items</button></h2>
+                        <h2 class="accordion-header"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${reqId}">Req ID: REQ-${reqId} (By: ${new Date(req.created_at).toLocaleDateString()}) - ${reqItems.length} items</button></h2>
                         <div id="collapse-${reqId}" class="accordion-collapse collapse" data-bs-parent="#pending-reqs-accordion">
                             <div class="accordion-body">
                                 <h6>Select items to approve:</h6><ul class="list-group mb-3">${itemsHTML}</ul>
@@ -770,7 +771,7 @@
                             <td>${isBidded && item.my_rank ? `<span class="badge bg-info">L${item.my_rank}</span>` : 'N/A'}</td>
                         </tr>
                     `;
-                    const freightValue = item.freight_required ? (item.my_freight_rate || '') : 0;
+                    const freightValue = item.freight_required ? (item.my_freight_rate || '') : 'Not Applicable';
                     const freightReadonly = !item.freight_required ? 'readonly' : '';
                     const bidRow = `
                         <tr class="bidding-row">
@@ -1012,35 +1013,50 @@
         
         async function handleBulkBidSubmit() {
             const bidsToSubmit = [];
+            const invalidBids = [];
+            
             $('#vendor-reqs-tbody .bidding-row').each(function() {
                 const exWorksInput = $(this).find('.ex-works-rate');
                 const exWorks = parseFloat(exWorksInput.val());
+                const freight = parseFloat($(this).find('.freight-rate').val()) || 0;
                 
                 if (!isNaN(exWorks) && exWorks > 0) {
                     const itemRow = $(this).prev('tr');
                     const item = JSON.parse(itemRow.attr('data-item'));
-                    const freight = parseFloat($(this).find('.freight-rate').val()) || 0;
                     
-                    bidsToSubmit.push({
-                        original_item_ids: item.original_item_ids, 
-                        item_name: item.item_name,
-                        ex_works_rate: exWorks,
-                        freight_rate: freight,
-                        comments: ''
-                    });
+                    if (item.my_bid_status && item.my_bid_status.includes('3 Bids')) { // Assuming a status like '3 Bids Submitted'
+                        invalidBids.push(item.item_name);
+                    } else {
+                        bidsToSubmit.push({
+                            original_item_ids: item.original_item_ids, 
+                            item_name: item.item_name,
+                            ex_works_rate: exWorks,
+                            freight_rate: freight,
+                            comments: ''
+                        });
+                    }
                 }
             });
 
-            if (bidsToSubmit.length === 0) {
+            if (bidsToSubmit.length === 0 && invalidBids.length === 0) {
                 return showToast('Please enter a bid for at least one item.', 'info');
             }
+            
+            if (invalidBids.length > 0) {
+                const invalidItemsText = invalidBids.join(', ');
+                if (!confirm(`The following items cannot be bid on (maximum of 3 bids reached): ${invalidItemsText}. Do you want to submit the remaining valid bids?`)) {
+                    return;
+                }
+            }
 
-            if (!confirm(`You are about to submit ${bidsToSubmit.length} bid(s). Continue?`)) return;
-
-            const result = await apiCall('/bids', 'POST', { bids: bidsToSubmit });
-            if(result.success) {
-                showToast(`${bidsToSubmit.length} bids submitted successfully!`, 'success');
-                load_vendor_requirements_view();
+            if (bidsToSubmit.length > 0) {
+                const result = await apiCall('/bids', 'POST', { bids: bidsToSubmit });
+                if(result.success) {
+                    showToast(`${bidsToSubmit.length} bids submitted successfully!`, 'success');
+                    load_vendor_requirements_view();
+                }
+            } else {
+                showToast('No valid bids to submit.', 'info');
             }
         }
 
