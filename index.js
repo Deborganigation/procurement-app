@@ -9,8 +9,8 @@ const path = require('path');
 const xlsx = require('xlsx');
 const fs = require('fs');
 const sgMail = require('@sendgrid/mail');
-const { v2: cloudinary } = require('cloudinary'); // Cloudinary package
-const { CloudinaryStorage } = require('multer-storage-cloudinary'); // Cloudinary storage for Multer
+const { v2: cloudinary } = require('cloudinary');
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
 require('dotenv').config();
 
 // ================== INITIALIZATION ==================
@@ -54,14 +54,14 @@ const dbPool = mysql.createPool({
 const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
     params: {
-        folder: 'procurement_uploads', // A folder will be created in Cloudinary
+        folder: 'procurement_uploads',
         allowed_formats: ['jpg', 'jpeg', 'png', 'pdf'],
         public_id: (req, file) => `${Date.now()}-${file.originalname.replace(/\s/g, '_')}`,
     },
 });
 
-const upload = multer({ storage }); // Use Cloudinary storage for general uploads
-const excelUpload = multer({ storage: multer.memoryStorage() }); // Keep Excel in memory
+const upload = multer({ storage });
+const excelUpload = multer({ storage: multer.memoryStorage() });
 
 
 // ================== AUTH MIDDLEWARE ==================
@@ -175,7 +175,6 @@ app.post('/api/requisitions', authenticateToken, upload.any(), async (req, res, 
             const drawingFile = req.files.find(f => f.fieldname === `drawing_${i}`);
             const specimenFile = req.files.find(f => f.fieldname === `specimen_${i}`);
             
-            // The full URL from Cloudinary is in file.path
             const drawingUrl = drawingFile ? drawingFile.path : null;
             const specimenUrl = specimenFile ? specimenFile.path : null;
 
@@ -223,7 +222,6 @@ app.get('/api/requisitions/my-status', authenticateToken, async (req, res, next)
 // --- 3. VENDOR FEATURES ---
 app.get('/api/requirements/assigned', authenticateToken, async (req, res, next) => {
     try {
-        // NEW FEATURE: Consolidate items for vendors
         const query = `
             SELECT 
                 ri.item_name, 
@@ -235,8 +233,7 @@ app.get('/api/requirements/assigned', authenticateToken, async (req, res, next) 
                 MIN(b.bid_status) AS my_bid_status,
                 (SELECT MIN(bid_amount) FROM bids WHERE item_id IN (SELECT item_id FROM requisition_items WHERE item_code = ri.item_code) AND vendor_id = ?) AS my_bid_amount,
                 (SELECT MIN(ex_works_rate) FROM bids WHERE item_id IN (SELECT item_id FROM requisition_items WHERE item_code = ri.item_code) AND vendor_id = ?) AS my_ex_works_rate,
-                (SELECT MIN(freight_rate) FROM bids WHERE item_id IN (SELECT item_id FROM requisition_items WHERE item_code = ri.item_code) AND vendor_id = ?) AS my_freight_rate,
-                (SELECT MIN(sub_b.bid_amount) FROM bids sub_b WHERE sub_b.item_id IN (SELECT item_id FROM requisition_items WHERE item_code = ri.item_code)) as l1_bid
+                (SELECT MIN(freight_rate) FROM bids WHERE item_id IN (SELECT item_id FROM requisition_items WHERE item_code = ri.item_code) AND vendor_id = ?) AS my_freight_rate
             FROM requisition_items ri
             JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id
             LEFT JOIN bids b ON ri.item_id = b.item_id AND b.vendor_id = ?
@@ -246,7 +243,6 @@ app.get('/api/requirements/assigned', authenticateToken, async (req, res, next) 
         `;
         const [items] = await dbPool.query(query, [req.user.userId, req.user.userId, req.user.userId, req.user.userId, req.user.userId]);
 
-        // Calculate rank after fetching data
         for (const item of items) {
             if (item.my_bid_amount) {
                 const [rankResult] = await dbPool.query(
@@ -258,7 +254,6 @@ app.get('/api/requirements/assigned', authenticateToken, async (req, res, next) 
                 item.my_rank = null;
             }
         }
-
         res.json({ success: true, data: items });
     } catch(error) {
         next(error);
@@ -272,27 +267,21 @@ app.post('/api/bids', authenticateToken, async (req, res, next) => {
     let connection;
     try {
         connection = await dbPool.getConnection();
-        const { bids } = req.body; // Bids will now contain original_item_ids
+        const { bids } = req.body;
         
         await connection.beginTransaction();
 
         for (const bid of bids) {
             const originalItemIds = bid.original_item_ids.split(',');
-
-            // Check bid limit for the first item (as it's a consolidated bid)
             const [[countResult]] = await connection.query('SELECT COUNT(*) as count FROM bidding_history_log WHERE item_id = ? AND vendor_id = ?', [originalItemIds[0], req.user.userId]);
             if (countResult.count >= 3) {
                  await connection.rollback();
                  return res.status(403).json({ success: false, message: `You have reached the maximum of 3 bids for item ${bid.item_name}.` });
             }
-
-            // Apply the same bid to all original items
             for (const itemId of originalItemIds) {
                 await connection.query('DELETE FROM bids WHERE item_id = ? AND vendor_id = ?', [itemId, req.user.userId]);
-                
                 const [result] = await connection.query("INSERT INTO bids (item_id, vendor_id, bid_amount, ex_works_rate, freight_rate, comments, bid_status) VALUES (?, ?, ?, ?, ?, ?, ?)", 
                     [itemId, req.user.userId, bid.bid_amount, bid.ex_works_rate, bid.freight_rate, bid.comments, 'Submitted']);
-                
                 await connection.query("INSERT INTO bidding_history_log (bid_id, item_id, vendor_id, bid_amount, ex_works_rate, freight_rate, bid_status, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())", 
                     [result.insertId, itemId, req.user.userId, bid.bid_amount, bid.ex_works_rate, bid.freight_rate, 'Submitted']);
             }
@@ -307,7 +296,7 @@ app.post('/api/bids', authenticateToken, async (req, res, next) => {
     }
 });
 
-app.get('/api/vendor/dashboard-stats', async (req, res, next) => {
+app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next) => {
     try {
         const vendorId = req.user.userId;
         const assignedQuery = "SELECT COUNT(DISTINCT ri.item_id) as count FROM requisition_items ri JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id WHERE ra.vendor_id = ? AND ri.status = 'Active'";
@@ -395,20 +384,32 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
         const activeVendorsQuery = "SELECT COUNT(*) as count FROM users WHERE role = 'Vendor' AND is_active = 1";
         const avgApprovalTimeQuery = "SELECT AVG(DATEDIFF(r.approved_at, r.created_at)) as avg_days FROM requisitions r WHERE r.status = 'Processed' AND r.approved_at IS NOT NULL";
         const noBidsQuery = "SELECT COUNT(*) as count FROM requisition_items WHERE status = 'Active' AND item_id NOT IN (SELECT DISTINCT item_id FROM bids)";
+        // BUG FIX: Corrected query for attention items
         const attentionItemsQuery = "SELECT item_id, item_name, requisition_id, item_sl_no FROM requisition_items WHERE status = 'Active' AND item_id NOT IN (SELECT DISTINCT item_id FROM bids) LIMIT 5";
         
+        // BUG FIX: Simplified and corrected activity query
         const activityQuery = `
-            SELECT CAST(d.day AS CHAR) as date, IFNULL(r.count, 0) as requisitions, IFNULL(b.count, 0) as bids
+            SELECT
+                DATE_FORMAT(all_dates.date, '%Y-%m-%d') AS date,
+                COALESCE(req_counts.count, 0) AS requisitions,
+                COALESCE(bid_counts.count, 0) AS bids
             FROM (
-                SELECT CURDATE() - INTERVAL (a.a + (10 * b.a) + (100 * c.a)) DAY as day
-                FROM (SELECT 0 AS a UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) AS a
-                CROSS JOIN (SELECT 0 AS a UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) AS b
-                CROSS JOIN (SELECT 0 AS a UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) AS c
-            ) d
-            LEFT JOIN (SELECT DATE(created_at) as day, COUNT(*) as count FROM requisitions GROUP BY day) r ON d.day = r.day
-            LEFT JOIN (SELECT DATE(submitted_at) as day, COUNT(*) as count FROM bidding_history_log GROUP BY day) b ON d.day = b.day
-            WHERE d.day BETWEEN CURDATE() - INTERVAL 6 DAY AND CURDATE()
-            ORDER BY d.day;
+                SELECT CURDATE() - INTERVAL (a.a) DAY as date
+                FROM (SELECT 0 AS a UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6) AS a
+            ) all_dates
+            LEFT JOIN (
+                SELECT DATE(created_at) as day, COUNT(*) as count
+                FROM requisitions
+                WHERE created_at >= CURDATE() - INTERVAL 6 DAY
+                GROUP BY day
+            ) req_counts ON all_dates.date = req_counts.day
+            LEFT JOIN (
+                SELECT DATE(submitted_at) as day, COUNT(*) as count
+                FROM bidding_history_log
+                WHERE submitted_at >= CURDATE() - INTERVAL 6 DAY
+                GROUP BY day
+            ) bid_counts ON all_dates.date = bid_counts.day
+            ORDER BY all_dates.date ASC;
         `;
 
         const [
@@ -580,13 +581,9 @@ app.post('/api/contracts/award', authenticateToken, isAdmin, async (req, res, ne
 
 app.get('/api/admin/awarded-contracts', authenticateToken, isAdmin, async (req, res, next) => {
     try {
-        // FIX: Added quantity and unit for the download report feature.
         const query = `
             SELECT 
-                ac.contract_id, ac.item_id, ac.requisition_id, ac.vendor_id, 
-                ac.awarded_amount, ac.ex_works_rate, ac.freight_rate,
-                ac.winning_bid_id, ac.remarks, ac.awarded_date,
-                ri.item_name, 
+                ac.*,
                 ri.item_sl_no,
                 ri.quantity,
                 ri.unit,
@@ -613,14 +610,13 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
             params.push(startDate, `${endDate} 23:59:59`);
         }
         
-        // BUG FIX: Correctly parameterize all queries to avoid syntax errors.
         const kpiQuery = `
             SELECT
                 SUM(ac.awarded_amount) AS totalSpend,
-                (SELECT COUNT(DISTINCT vendor_id) FROM awarded_contracts ac WHERE ${dateFilter}) as participatingVendors,
+                (SELECT COUNT(DISTINCT vendor_id) FROM awarded_contracts ac WHERE ${dateFilter.replace(/ac\./g, '')}) as participatingVendors,
                 (SELECT COUNT(*) FROM users WHERE role='Vendor' AND is_active=1) as totalVendors,
-                (SELECT COUNT(*) FROM awarded_contracts ac WHERE ${dateFilter} AND awarded_amount = (SELECT MIN(bid_amount) FROM bids WHERE item_id = ac.item_id)) as l1Awards,
-                (SELECT COUNT(*) FROM awarded_contracts ac WHERE ${dateFilter}) as totalAwards
+                (SELECT COUNT(*) FROM awarded_contracts ac WHERE ${dateFilter.replace(/ac\./g, '')} AND awarded_amount = (SELECT MIN(bid_amount) FROM bids WHERE item_id = ac.item_id)) as l1Awards,
+                (SELECT COUNT(*) FROM awarded_contracts ac WHERE ${dateFilter.replace(/ac\./g, '')}) as totalAwards
             FROM awarded_contracts ac
             WHERE ${dateFilter}`;
 
@@ -658,9 +654,7 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
 
         const detailedReportQuery = `
             SELECT 
-                ac.contract_id, ac.item_id, ac.requisition_id,
-                ac.awarded_amount, ac.awarded_date,
-                ri.item_name, 
+                ac.*,
                 ri.item_sl_no,
                 u.full_name as vendor_name
             FROM awarded_contracts ac
@@ -866,7 +860,6 @@ app.get('/api/users/vendors', authenticateToken, async (req, res, next) => {
     }
 });
 
-// NEW HELPER ENDPOINT
 app.get('/api/users/admins', authenticateToken, async (req, res, next) => {
     try {
         const [admins] = await dbPool.query("SELECT email FROM users WHERE role = 'Admin' AND is_active = 1");
@@ -1029,7 +1022,6 @@ app.get('/api/messages/:otherUserId', authenticateToken, async (req, res, next) 
     }
 });
 
-// NEW FEATURE: Notifications Endpoint
 app.get('/api/notifications', authenticateToken, async (req, res, next) => {
     try {
         const { userId, role } = req.user;
@@ -1065,11 +1057,9 @@ app.get('/api/notifications', authenticateToken, async (req, res, next) => {
 app.post('/api/send-email', authenticateToken, async (req, res, next) => {
     if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_API_KEY.startsWith('SG.')) {
         console.error("====== INVALID SENDGRID CONFIGURATION ======");
-        console.error("CRITICAL: SENDGRID_API_KEY is missing from .env or does not start with 'SG.'. Email sending is disabled.");
         return res.json({ success: true, message: 'Email service not configured, but proceeding.' });
     }
 
-    // NEW FEATURE: Handle CC
     const { recipient, subject, htmlBody, cc } = req.body;
     const msg = {
         to: recipient,
@@ -1087,7 +1077,6 @@ app.post('/api/send-email', authenticateToken, async (req, res, next) => {
         res.json({ success: true, message: 'Email sent successfully.' });
     } catch (error) {
         console.error("====== SENDGRID ERROR ======");
-        console.error("Timestamp:", new Date().toISOString());
         console.error("Failed to send email to:", recipient);
         if (error.response) {
             console.error("SendGrid Response Body:", error.response.body);
