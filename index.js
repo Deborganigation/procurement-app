@@ -118,7 +118,7 @@ app.post('/api/register', async (req, res, next) => {
     try {
         const { FullName, Email, Password, Role, CompanyName, ContactNumber, GSTIN } = req.body;
         const hashedPassword = await bcrypt.hash(Password, 10);
-        await dbPool.query('INSERT INTO pending_users (full_name, email, password, role, company_name, contact_number, gstin) VALUES (?, ?, ?, ?, ?, ?, ?)', [FullName, Email, hashedPassword, Role, CompanyName, ContactNumber, GSTIN]);
+        await dbPool.query('INSERT INTO pending_users (full_name, email, password, role, company_name, contact_number, gstin, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())', [FullName, Email, hashedPassword, Role, CompanyName, ContactNumber, GSTIN]);
 
         try {
             const [admins] = await dbPool.query("SELECT email FROM users WHERE role = 'Admin' AND is_active = 1");
@@ -133,10 +133,10 @@ app.post('/api/register', async (req, res, next) => {
 
             if (adminEmails.length > 0) {
                  sgMail.send({
-                     to: adminEmails,
-                     from: process.env.FROM_EMAIL,
-                     subject: "New User Registration Approval Required",
-                     html: `<p>Hello Admin Team,</p><p>A new user has registered and is awaiting approval:</p><ul><li><b>Name:</b> ${FullName}</li><li><b>Email:</b> ${Email}</li><li><b>Role:</b> ${Role}</li></ul><p>Please log in to the admin panel to review and approve the registration.</p>`
+                    to: adminEmails,
+                    from: process.env.FROM_EMAIL,
+                    subject: "New User Registration Approval Required",
+                    html: `<p>Hello Admin Team,</p><p>A new user has registered and is awaiting approval:</p><ul><li><b>Name:</b> ${FullName}</li><li><b>Email:</b> ${Email}</li><li><b>Role:</b> ${Role}</li></ul><p>Please log in to the admin panel to review and approve the registration.</p>`
                  }).catch(console.error);
             }
         } catch (emailError) {
@@ -273,7 +273,10 @@ app.post('/api/bids', authenticateToken, async (req, res, next) => {
 
         for (const bid of bids) {
             const originalItemIds = bid.original_item_ids.split(',');
-            const [[countResult]] = await connection.query('SELECT COUNT(*) as count FROM bidding_history_log WHERE item_id = ? AND vendor_id = ?', [originalItemIds[0], req.user.userId]);
+            const [[itemDetails]] = await connection.query('SELECT item_code FROM requisition_items WHERE item_id = ?', [originalItemIds[0]]);
+            
+            // Check bid count based on item_code, not individual item_id
+            const [[countResult]] = await connection.query('SELECT COUNT(*) as count FROM bidding_history_log bhl JOIN requisition_items ri ON bhl.item_id = ri.item_id WHERE ri.item_code = ? AND bhl.vendor_id = ?', [itemDetails.item_code, req.user.userId]);
             
             if (countResult.count >= 3) {
                  invalidBids.push(bid.item_name);
@@ -281,11 +284,11 @@ app.post('/api/bids', authenticateToken, async (req, res, next) => {
             }
 
             for (const itemId of originalItemIds) {
-                const [[itemDetails]] = await connection.query('SELECT quantity FROM requisition_items WHERE item_id = ?', [itemId]);
-                const totalBidAmount = (parseFloat(bid.ex_works_rate) + parseFloat(bid.freight_rate)) * parseFloat(itemDetails.quantity);
+                const [[itemDetailsForQuantity]] = await connection.query('SELECT quantity FROM requisition_items WHERE item_id = ?', [itemId]);
+                const totalBidAmount = (parseFloat(bid.ex_works_rate) + parseFloat(bid.freight_rate)) * parseFloat(itemDetailsForQuantity.quantity);
 
                 await connection.query('DELETE FROM bids WHERE item_id = ? AND vendor_id = ?', [itemId, req.user.userId]);
-                const [result] = await connection.query("INSERT INTO bids (item_id, vendor_id, bid_amount, ex_works_rate, freight_rate, comments, bid_status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                const [result] = await connection.query("INSERT INTO bids (item_id, vendor_id, bid_amount, ex_works_rate, freight_rate, comments, bid_status, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())",
                     [itemId, req.user.userId, totalBidAmount, bid.ex_works_rate, bid.freight_rate, bid.comments, 'Submitted']);
                 await connection.query("INSERT INTO bidding_history_log (bid_id, item_id, vendor_id, bid_amount, ex_works_rate, freight_rate, bid_status, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())",
                     [result.insertId, itemId, req.user.userId, totalBidAmount, bid.ex_works_rate, bid.freight_rate, 'Submitted']);
@@ -313,10 +316,10 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
         const wonQuery = "SELECT COUNT(*) as count, SUM(awarded_amount) as totalValue FROM awarded_contracts WHERE vendor_id = ?";
         const needsBidQuery = "SELECT COUNT(DISTINCT ri.item_code) as count FROM requisition_items ri JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id WHERE ra.vendor_id = ? AND ri.status = 'Active' AND ri.item_id NOT IN (SELECT item_id FROM bids WHERE vendor_id = ?)";
         const l1BidsQuery = "SELECT COUNT(DISTINCT b.item_id) as count FROM bids b WHERE b.vendor_id = ? AND b.bid_amount = (SELECT MIN(bid_amount) FROM bids WHERE item_id = b.item_id)";
-        const recentBidsQuery = `SELECT b.bid_amount, b.bid_status, ri.item_name FROM bids b JOIN requisition_items ri ON b.item_id = ri.item_id WHERE b.vendor_id = ? ORDER BY b.submitted_at DESC LIMIT 5`;
+        const recentBidsQuery = `SELECT b.bid_amount, b.bid_status, b.submitted_at, ri.item_name FROM bids b JOIN requisition_items ri ON b.item_id = ri.item_id WHERE b.vendor_id = ? ORDER BY b.submitted_at DESC LIMIT 5`;
 
         const [
-            [[assigned]], [[submitted]], [[won]], [[needsBid]], [[l1Bids]], recentBids, notifications
+            [[assigned]], [[submitted]], [[won]], [[needsBid]], [[l1Bids]], [recentBids], notifications
         ] = await Promise.all([
             dbPool.query(assignedQuery, [vendorId]),
             dbPool.query(submittedQuery, [vendorId]),
@@ -391,24 +394,31 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
     try {
         const activeItemsQuery = "SELECT COUNT(*) as count FROM requisition_items WHERE status = 'Active'";
         const pendingUsersQuery = "SELECT COUNT(*) as count FROM pending_users";
-        const awardedQuery = "SELECT COUNT(*) as count FROM awarded_contracts";
+        const awardedQuery = "SELECT COUNT(*) as count, SUM(awarded_amount) as totalValue FROM awarded_contracts";
         const pendingReqsQuery = "SELECT COUNT(DISTINCT requisition_id) as count FROM requisitions WHERE status = 'Pending Approval'";
         const reqsTodayQuery = "SELECT COUNT(*) as count FROM requisitions WHERE DATE(created_at) = CURDATE()";
         const activeVendorsQuery = "SELECT COUNT(*) as count FROM users WHERE role = 'Vendor' AND is_active = 1";
         const avgApprovalTimeQuery = "SELECT AVG(DATEDIFF(r.approved_at, r.created_at)) as avg_days FROM requisitions r WHERE r.status = 'Processed' AND r.approved_at IS NOT NULL";
         
-        // Revised query for Latest Requisitions for better dashboard view
-        const latestReqsQuery = `SELECT r.requisition_id, r.status, r.created_at, u.full_name as creator_name, (SELECT COUNT(*) FROM requisition_items ri WHERE ri.requisition_id = r.requisition_id) as item_count FROM requisitions r JOIN users u ON r.created_by = u.user_id ORDER BY r.created_at DESC LIMIT 5`;
+        const latestActivityQuery = `
+            (SELECT 'New User' as type, full_name as description, created_at as timestamp FROM pending_users ORDER BY created_at DESC LIMIT 2)
+            UNION ALL
+            (SELECT 'New Requisition' as type, CONCAT('Req ID: ', requisition_id) as description, created_at as timestamp FROM requisitions ORDER BY created_at DESC LIMIT 2)
+            UNION ALL
+            (SELECT 'Contract Awarded' as type, CONCAT('Req ID: ', requisition_id, ' to ', vendor_name) as description, awarded_date as timestamp FROM awarded_contracts ORDER BY awarded_date DESC LIMIT 2)
+            ORDER BY timestamp DESC LIMIT 5
+        `;
         
-        // No more separate notifications table, fetching from relevant sources
-        const notificationsQuery = `SELECT CONCAT('New user registered: ', full_name) AS text, created_at AS timestamp, 'admin-pending-users-view' AS view FROM pending_users ORDER BY created_at DESC LIMIT 5`;
-
+        const awardedByMonthQuery = "SELECT DATE_FORMAT(awarded_date, '%Y-%m') as month, SUM(awarded_amount) as totalValue FROM awarded_contracts GROUP BY month ORDER BY month";
+        
+        const topVendorsQuery = "SELECT vendor_name, SUM(awarded_amount) as totalAwarded FROM awarded_contracts GROUP BY vendor_name ORDER BY totalAwarded DESC LIMIT 5";
+        
         const [
-            [[activeItems]], [[pendingUsers]], [[awarded]], [[pendingReqs]], [[reqsToday]], [[activeVendors]], [[avgApprovalTime]], latestReqs, notifications
+            [[activeItems]], [[pendingUsers]], [[awarded]], [[pendingReqs]], [[reqsToday]], [[activeVendors]], [[avgApprovalTime]], [latestActivity], [awardedByMonth], [topVendors]
         ] = await Promise.all([
             dbPool.query(activeItemsQuery), dbPool.query(pendingUsersQuery), dbPool.query(awardedQuery),
             dbPool.query(pendingReqsQuery), dbPool.query(reqsTodayQuery), dbPool.query(activeVendorsQuery),
-            dbPool.query(avgApprovalTimeQuery), dbPool.query(latestReqsQuery), dbPool.query(notificationsQuery)
+            dbPool.query(avgApprovalTimeQuery), dbPool.query(latestActivityQuery), dbPool.query(awardedByMonthQuery), dbPool.query(topVendorsQuery)
         ]);
         
         res.json({
@@ -417,12 +427,14 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
                 activeItems: activeItems.count, 
                 pendingUsers: pendingUsers.count, 
                 awardedContracts: awarded.count,
+                totalAwardedValue: awarded.totalValue || 0,
                 pendingRequisitionsCount: pendingReqs.count,
                 reqsToday: reqsToday.count,
                 activeVendors: activeVendors.count,
                 avgApprovalTime: avgApprovalTime.avg_days ? parseFloat(avgApprovalTime.avg_days).toFixed(1) : 0,
-                latestRequisitions: latestReqs,
-                notifications: notifications
+                latestActivity: latestActivity,
+                awardedByMonth: awardedByMonth,
+                topVendors: topVendors
             }
         });
     } catch (error) {
@@ -511,7 +523,7 @@ app.post('/api/admin/bids-for-items', authenticateToken, isAdmin, async (req, re
         const { itemIds } = req.body;
         if (!itemIds || itemIds.length === 0) return res.status(400).json({ success: false, message: "No item IDs provided" });
 
-        const [items] = await dbPool.query(`SELECT item_id, item_name, requisition_id, item_sl_no FROM requisition_items WHERE item_id IN (?)`, [itemIds]);
+        const [items] = await dbPool.query(`SELECT item_id, item_name, requisition_id, item_sl_no, quantity, unit FROM requisition_items WHERE item_id IN (?)`, [itemIds]);
         const [bids] = await dbPool.query(`SELECT b.*, u.full_name as vendor_name, u.email as vendor_email FROM bids b JOIN users u ON b.vendor_id = u.user_id WHERE b.item_id IN (?) AND b.bid_status = 'Submitted' ORDER BY b.item_id, b.bid_amount ASC`, [itemIds]);
 
         const responseData = items.map(item => ({
@@ -584,7 +596,6 @@ app.get('/api/admin/awarded-contracts', authenticateToken, isAdmin, async (req, 
     }
 });
 
-
 app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res, next) => {
     try {
         const { startDate, endDate } = req.body;
@@ -603,7 +614,8 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
             SELECT
                 ac.awarded_amount, DATE_FORMAT(ac.awarded_date, '%Y-%m-%d') as awarded_date,
                 ri.requisition_id, ri.item_sl_no, ri.item_name,
-                u.full_name as vendor_name
+                u.full_name as vendor_name,
+                (SELECT AVG(b.bid_amount) FROM bids b WHERE b.item_id = ac.item_id) as avg_bid_amount
             FROM awarded_contracts ac
             JOIN requisition_items ri ON ac.item_id = ri.item_id
             JOIN users u ON ac.vendor_id = u.user_id
@@ -611,11 +623,27 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
             ORDER BY ac.awarded_date DESC`;
             
         const [detailedReport] = await dbPool.query(detailedReportQuery, params);
+        
+        const totalSpendQuery = `SELECT SUM(awarded_amount) as total FROM awarded_contracts ${dateFilter}`;
+        const [totalSpend] = await dbPool.query(totalSpendQuery, params);
+
+        const totalSavingsQuery = `
+            SELECT SUM(b1.bid_amount - b2.bid_amount) as total
+            FROM awarded_contracts ac
+            JOIN bids b1 ON ac.item_id = b1.item_id AND b1.bid_id = ac.winning_bid_id
+            JOIN bids b2 ON ac.item_id = b2.item_id AND b2.bid_status = 'Submitted'
+            WHERE b2.bid_amount > b1.bid_amount
+            ${dateFilter.replace(/ac\.awarded_date/g, 'ac.awarded_date')}`;
+        const [totalSavings] = await dbPool.query(totalSavingsQuery, params);
 
         res.json({
             success: true,
             data: {
-                detailedReport
+                detailedReport,
+                kpis: {
+                    totalSpend: totalSpend[0].total || 0,
+                    totalSavings: totalSavings[0].total || 0
+                }
             }
         });
 
@@ -899,7 +927,7 @@ app.get('/api/conversations', authenticateToken, async (req, res, next) => {
                     SELECT MAX(timestamp)
                     FROM messages
                     WHERE (sender_id = m.sender_id AND recipient_id = m.recipient_id)
-                         OR (sender_id = m.recipient_id AND recipient_id = m.sender_id)
+                          OR (sender_id = m.recipient_id AND recipient_id = m.sender_id)
                 )
             GROUP BY
                 other_user_id, u.full_name, u.role, lastMessage, lastMessageTimestamp
