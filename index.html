@@ -471,7 +471,6 @@
             if (currentViewLink.length > 0) {
                 showToast('Refreshing data...', 'info');
                 const viewId = currentViewLink.data('view');
-                // BUG FIX: Prevent re-fetching master data on every manual refresh
                 if (viewId === 'user-create-req-view') {
                     PRODUCT_LIST = []; 
                     LOCATION_DROPDOWN_DATA = [];
@@ -741,7 +740,6 @@
             $('#requisition-items-container').html('');
             itemCounter = 0;
             
-            // BUG FIX: Prevent re-fetching product list if it's already loaded.
             if (PRODUCT_LIST.length === 0 || LOCATION_DROPDOWN_DATA.length === 0) { 
                 $('#requisition-items-container').html(`<div class="text-center p-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">Fetching master data...</p></div>`);
                 await fetchMasterData();
@@ -882,7 +880,6 @@
                         vendor_email: bid.vendor_email,
                         ex_works_rate: bid.ex_works_rate,
                         freight_rate: bid.freight_rate,
-                        // Add item details to each bid for the award function
                         item_name: itemDetails.item_name,
                         item_code: itemDetails.item_code,
                         quantity: itemDetails.quantity,
