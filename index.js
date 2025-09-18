@@ -55,7 +55,7 @@ const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
     params: {
         folder: 'procurement_uploads',
-        upload_preset: 'ml_default', // ADDED THIS LINE TO FORCE CORRECT PRESET
+        upload_preset: 'ml_default', // FORCE CORRECT PRESET
         allowed_formats: ['jpg', 'jpeg', 'png', 'pdf'],
         public_id: (req, file) => `${Date.now()}-${file.originalname.replace(/\s/g, '_')}`,
     },
@@ -597,7 +597,7 @@ app.get('/api/admin/awarded-contracts', authenticateToken, isAdmin, async (req, 
     }
 });
 
-// BUG FIX: Rewritten the entire endpoint for clarity and correctness
+// FINAL FIX for Reports Page
 app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res, next) => {
     try {
         const { startDate, endDate } = req.body;
@@ -612,12 +612,9 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
         
         const dateFilter = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
         
-        const kpiParams = [...params]; // Params for queries with one date filter
-        
-        // --- KPI Queries ---
         const kpiQuery = `
             SELECT
-                SUM(ac.awarded_amount) AS totalSpend,
+                COALESCE(SUM(ac.awarded_amount), 0) AS totalSpend,
                 (SELECT COUNT(DISTINCT vendor_id) FROM awarded_contracts ac ${dateFilter}) as participatingVendors,
                 (SELECT COUNT(*) FROM users WHERE role='Vendor' AND is_active=1) as totalVendors,
                 (SELECT COUNT(*) FROM awarded_contracts ac ${dateFilter ? `${dateFilter} AND` : 'WHERE'} awarded_amount <= (SELECT MIN(bid_amount) FROM bids WHERE item_id = ac.item_id)) as l1Awards,
@@ -625,7 +622,6 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
             FROM awarded_contracts ac
             ${dateFilter}`;
         
-        // --- Chart Queries ---
         const vendorSpendQuery = `
             SELECT u.full_name, SUM(ac.awarded_amount) as total
             FROM awarded_contracts ac
@@ -635,7 +631,6 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
             
         const categorySpendQuery = `SELECT item_code, SUM(awarded_amount) as total FROM awarded_contracts ac ${dateFilter} GROUP BY item_code HAVING item_code IS NOT NULL ORDER BY total DESC LIMIT 5`;
 
-        // --- Detailed Report Query ---
         const detailedReportQuery = `
             SELECT 
                 ac.awarded_amount, ac.awarded_date,
@@ -650,10 +645,10 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
         const [
             [[kpis]], topVendors, categorySpend, detailedReport
         ] = await Promise.all([
-            dbPool.query(kpiQuery, [...kpiParams, ...kpiParams, ...kpiParams, ...kpiParams]),
-            dbPool.query(vendorSpendQuery, kpiParams),
-            dbPool.query(categorySpendQuery, kpiParams),
-            dbPool.query(detailedReportQuery, kpiParams)
+            dbPool.query(kpiQuery, [...params, ...params, ...params, ...params]),
+            dbPool.query(vendorSpendQuery, params),
+            dbPool.query(categorySpendQuery, params),
+            dbPool.query(detailedReportQuery, params)
         ]);
 
         res.json({
@@ -661,7 +656,7 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
             data: {
                 kpis: {
                     totalSpend: kpis.totalSpend || 0,
-                    totalSavings: 0, // Placeholder
+                    totalSavings: 0, 
                     vendorParticipationRate: kpis.totalVendors > 0 ? (kpis.participatingVendors / kpis.totalVendors) * 100 : 0,
                     l1AwardRate: kpis.totalAwards > 0 ? (kpis.l1Awards / kpis.totalAwards) * 100 : 0,
                 },
@@ -673,7 +668,7 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
                     labels: categorySpend.map(c => c.item_code || 'Unknown'),
                     data: categorySpend.map(c => c.total)
                 },
-                savingsTrend: { labels: [], data: [] }, // Placeholder
+                savingsTrend: { labels: [], data: [] }, 
                 detailedReport
             }
         });
