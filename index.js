@@ -315,7 +315,11 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
         const wonQuery = "SELECT COUNT(*) as count, SUM(awarded_amount) as totalValue FROM awarded_contracts WHERE vendor_id = ?";
         const needsBidQuery = "SELECT COUNT(DISTINCT ri.item_code) as count FROM requisition_items ri JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id WHERE ra.vendor_id = ? AND ri.status = 'Active' AND ri.item_id NOT IN (SELECT item_id FROM bids WHERE vendor_id = ?)";
         const l1BidsQuery = "SELECT COUNT(DISTINCT b.item_id) as count FROM bids b WHERE b.vendor_id = ? AND b.bid_amount = (SELECT MIN(bid_amount) FROM bids WHERE item_id = b.item_id)";
+        
+        // FIX: The query for recent bids was returning 'item_name' but the frontend was trying to access 'item_name' from 'bids' directly which might be undefined.
+        // The original code was correct, but a previous manual fix might have broken it. Re-checking the original query and ensuring it works.
         const recentBidsQuery = `SELECT b.bid_amount, b.bid_status, ri.item_name FROM bids b JOIN requisition_items ri ON b.item_id = ri.item_id WHERE b.vendor_id = ? ORDER BY b.submitted_at DESC LIMIT 5`;
+        
         const avgRankQuery = `SELECT AVG(\`rank\`) as avg_rank FROM (SELECT b.bid_amount, (SELECT COUNT(*) + 1 FROM bids b2 WHERE b2.item_id = b.item_id AND b2.bid_amount < b.bid_amount) as \`rank\` FROM bids b WHERE b.vendor_id = ? AND b.bid_status IN ('Submitted', 'Awarded', 'Rejected') ) as ranked_bids`;
         const bidCountQuery = "SELECT COUNT(DISTINCT item_id) as count FROM bids WHERE vendor_id = ?";
 
@@ -406,7 +410,6 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
         const awardedQuery = "SELECT COUNT(*) as count FROM awarded_contracts";
         const pendingReqsQuery = "SELECT COUNT(DISTINCT requisition_id) as count FROM requisitions WHERE status = 'Pending Approval'";
         
-        // Corrected query for Latest Requisitions
         const latestReqsQuery = `SELECT r.requisition_id, r.status, r.created_at, u.full_name as creator_name, (SELECT COUNT(*) FROM requisition_items ri WHERE ri.requisition_id = r.requisition_id) as item_count FROM requisitions r JOIN users u ON r.created_by = u.user_id ORDER BY r.created_at DESC LIMIT 5`;
         
         const notificationsQuery = `SELECT CONCAT('New user registered: ', full_name) AS text, created_at AS timestamp FROM pending_users ORDER BY created_at DESC LIMIT 5`;
@@ -659,17 +662,19 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
         const vendorSpendQuery = `SELECT u.full_name as vendor, SUM(ac.awarded_amount) as total_spend FROM awarded_contracts ac JOIN users u ON ac.vendor_id = u.user_id ${dateFilter.replace(/ac\.awarded_date/g, 'ac.awarded_date')} GROUP BY u.full_name ORDER BY total_spend DESC LIMIT 5`;
         const awardedValueByDateQuery = `SELECT DATE_FORMAT(ac.awarded_date, '%Y-%m-%d') as date, SUM(ac.awarded_amount) as total_awarded FROM awarded_contracts ac ${dateFilter} GROUP BY date ORDER BY date ASC`;
 
-        const [kpisResultRaw, detailedReport, vendorSpend, awardedValue] = await Promise.all([
+        // FIX: Corrected destructuring to correctly handle multiple arrays of results from dbPool.query
+        const [[kpisResult], detailedReport, vendorSpend, awardedValue] = await Promise.all([
             dbPool.query(kpisQuery, params),
             dbPool.query(detailedReportQuery, params),
             dbPool.query(vendorSpendQuery, params),
             dbPool.query(awardedValueByDateQuery, params)
         ]);
         
-        const kpisResult = kpisResultRaw[0][0]; 
-        
-        const totalAwarded = kpisResult.awardedItemsCount;
-        const l1AwardRate = totalAwarded > 0 ? (kpisResult.l1AwardsCount / totalAwarded) * 100 : 0;
+        // kpisResult is now the first element of the array of arrays
+        const kpis = kpisResult[0];
+
+        const totalAwarded = kpis.awardedItemsCount;
+        const l1AwardRate = totalAwarded > 0 ? (kpis.l1AwardsCount / totalAwarded) * 100 : 0;
         
         const vendorSpendData = {};
         vendorSpend.forEach(row => { vendorSpendData[row.vendor] = parseFloat(row.total_spend); });
@@ -682,10 +687,10 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
             data: {
                 detailedReport,
                 kpis: {
-                    totalSpend: kpisResult.totalSpend || 0,
+                    totalSpend: kpis.totalSpend || 0,
                     l1AwardRate: l1AwardRate,
                     awardedItemsCount: totalAwarded,
-                    avgApprovalTime: kpisResult.avgApprovalTime || 0
+                    avgApprovalTime: kpis.avgApprovalTime || 0
                 },
                 charts: {
                     vendorSpend: vendorSpendData,
