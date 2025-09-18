@@ -320,7 +320,6 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
                 FROM bids b WHERE b.vendor_id = ?
             ) as ranked_bids`;
 
-        // Corrected query for win rate
         const bidCountQuery = "SELECT COUNT(DISTINCT item_id) as count FROM bids WHERE vendor_id = ?";
 
         const [
@@ -402,7 +401,6 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
         const latestReqsQuery = `SELECT r.requisition_id, r.status, r.created_at, u.full_name as creator_name, (SELECT COUNT(*) FROM requisition_items ri WHERE ri.requisition_id = r.requisition_id) as item_count FROM requisitions r JOIN users u ON r.created_by = u.user_id ORDER BY r.created_at DESC LIMIT 5`;
         const notificationsQuery = `SELECT CONCAT('New user registered: ', full_name) AS text, created_at AS timestamp FROM pending_users ORDER BY created_at DESC LIMIT 5`;
         
-        // New queries for charts and KPIs
         const reqTrendsQuery = `SELECT DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as count FROM requisitions GROUP BY month ORDER BY month ASC`;
         const biddingActivityQuery = `
             SELECT u.full_name, COUNT(b.bid_id) as bid_count
@@ -426,7 +424,6 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
             dbPool.query(biddingActivityQuery)
         ]);
         
-        // Format data for charts
         const reqTrendsChart = {
             labels: reqTrends.map(row => row.month),
             data: reqTrends.map(row => row.count)
@@ -654,13 +651,15 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
         const vendorSpendQuery = `SELECT u.full_name as vendor, SUM(ac.awarded_amount) as total_spend FROM awarded_contracts ac JOIN users u ON ac.vendor_id = u.user_id ${dateFilter.replace('ac.awarded_date', 'ac.awarded_date')} GROUP BY u.full_name ORDER BY total_spend DESC LIMIT 5`;
         const awardedValueByDateQuery = `SELECT DATE_FORMAT(ac.awarded_date, '%Y-%m-%d') as date, SUM(ac.awarded_amount) as total_awarded FROM awarded_contracts ac ${dateFilter} GROUP BY date ORDER BY date ASC`;
 
-        const [[kpisResult]], [detailedReport], [vendorSpend], [awardedValue] = await Promise.all([
+        const [kpisResultRaw, detailedReport, vendorSpend, awardedValue] = await Promise.all([
             dbPool.query(kpisQuery, params),
             dbPool.query(detailedReportQuery, params),
             dbPool.query(vendorSpendQuery, params),
             dbPool.query(awardedValueByDateQuery, params)
         ]);
-
+        
+        const kpisResult = kpisResultRaw[0][0]; // Correctly destructure kpisResult
+        
         const totalAwarded = kpisResult.awardedItemsCount;
         const l1AwardRate = totalAwarded > 0 ? (kpisResult.l1AwardsCount / totalAwarded) * 100 : 0;
         
@@ -1083,6 +1082,7 @@ app.get('/api/sidebar-counts', authenticateToken, async (req, res, next) => {
         next(error);
     }
 });
+
 
 // --- 7. MISC & EMAIL ---
 app.post('/api/send-email', authenticateToken, async (req, res, next) => {
