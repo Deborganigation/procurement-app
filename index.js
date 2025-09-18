@@ -117,12 +117,40 @@ app.post('/api/register', async (req, res, next) => {
         const { FullName, Email, Password, Role, CompanyName, ContactNumber, GSTIN } = req.body;
         const hashedPassword = await bcrypt.hash(Password, 10);
         await dbPool.query('INSERT INTO pending_users (full_name, email, password, role, company_name, contact_number, gstin) VALUES (?, ?, ?, ?, ?, ?, ?)', [FullName, Email, hashedPassword, Role, CompanyName, ContactNumber, GSTIN]);
+        
+        // NEW FEATURE: Send emails on registration
+        try {
+            const [admins] = await dbPool.query("SELECT email FROM users WHERE role = 'Admin' AND is_active = 1");
+            const adminEmails = admins.map(a => a.email);
+
+            // Email to User
+            sgMail.send({
+                to: Email,
+                from: process.env.FROM_EMAIL,
+                subject: "Registration Received - Awaiting Approval",
+                html: `<p>Dear ${FullName},</p><p>Thank you for registering with DEB'S PROCUREMENT. Your account is currently pending approval from an administrator. You will be notified once your account is activated.</p><p>Regards,<br>The Procurement Team</p>`
+            }).catch(console.error);
+
+            // Email to Admins
+            if (adminEmails.length > 0) {
+                 sgMail.send({
+                    to: adminEmails,
+                    from: process.env.FROM_EMAIL,
+                    subject: "New User Registration Approval Required",
+                    html: `<p>Hello Admin Team,</p><p>A new user has registered and is awaiting approval:</p><ul><li><b>Name:</b> ${FullName}</li><li><b>Email:</b> ${Email}</li><li><b>Role:</b> ${Role}</li></ul><p>Please log in to the admin panel to review and approve the registration.</p>`
+                }).catch(console.error);
+            }
+        } catch (emailError) {
+            console.error("Failed to send registration emails:", emailError);
+        }
+
         res.status(201).json({ success: true, message: 'Registration successful! Awaiting admin approval.' });
     } catch (error) {
         if (error.code === 'ER_DUP_ENTRY') return res.status(400).json({ success: false, message: 'This email is already registered.' });
         next(error);
     }
 });
+
 
 // --- 2. REQUISITIONS & FILE UPLOADS ---
 app.get('/api/dropdowns/locations', authenticateToken, (req, res) => {
@@ -195,25 +223,48 @@ app.get('/api/requisitions/my-status', authenticateToken, async (req, res, next)
 // --- 3. VENDOR FEATURES ---
 app.get('/api/requirements/assigned', authenticateToken, async (req, res, next) => {
     try {
+        // NEW FEATURE: Consolidate items for vendors
         const query = `
             SELECT 
-                ri.*, 
-                b.bid_status AS my_bid_status, 
-                b.bid_amount AS my_bid_amount,
-                b.ex_works_rate AS my_ex_works_rate,
-                b.freight_rate AS my_freight_rate,
-                (SELECT COUNT(*) + 1 FROM bids WHERE item_id = ri.item_id AND bid_amount < b.bid_amount) AS my_rank
+                ri.item_name, 
+                ri.item_code, 
+                ri.unit, 
+                ri.freight_required,
+                SUM(ri.quantity) as quantity,
+                GROUP_CONCAT(ri.item_id SEPARATOR ',') as original_item_ids,
+                MIN(b.bid_status) AS my_bid_status,
+                (SELECT MIN(bid_amount) FROM bids WHERE item_id IN (SELECT item_id FROM requisition_items WHERE item_code = ri.item_code) AND vendor_id = ?) AS my_bid_amount,
+                (SELECT MIN(ex_works_rate) FROM bids WHERE item_id IN (SELECT item_id FROM requisition_items WHERE item_code = ri.item_code) AND vendor_id = ?) AS my_ex_works_rate,
+                (SELECT MIN(freight_rate) FROM bids WHERE item_id IN (SELECT item_id FROM requisition_items WHERE item_code = ri.item_code) AND vendor_id = ?) AS my_freight_rate,
+                (SELECT MIN(sub_b.bid_amount) FROM bids sub_b WHERE sub_b.item_id IN (SELECT item_id FROM requisition_items WHERE item_code = ri.item_code)) as l1_bid
             FROM requisition_items ri
             JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id
             LEFT JOIN bids b ON ri.item_id = b.item_id AND b.vendor_id = ?
             WHERE ra.vendor_id = ? AND ri.status = 'Active'
-            ORDER BY ri.requisition_id DESC, ri.item_sl_no ASC`;
-        const [items] = await dbPool.query(query, [req.user.userId, req.user.userId]);
+            GROUP BY ri.item_name, ri.item_code, ri.unit, ri.freight_required
+            ORDER BY ri.item_name ASC;
+        `;
+        const [items] = await dbPool.query(query, [req.user.userId, req.user.userId, req.user.userId, req.user.userId, req.user.userId]);
+
+        // Calculate rank after fetching data
+        for (const item of items) {
+            if (item.my_bid_amount) {
+                const [rankResult] = await dbPool.query(
+                    `SELECT COUNT(DISTINCT vendor_id) + 1 as rank FROM bids WHERE item_id IN (${item.original_item_ids}) AND bid_amount < ?`,
+                    [item.my_bid_amount]
+                );
+                item.my_rank = rankResult[0].rank;
+            } else {
+                item.my_rank = null;
+            }
+        }
+
         res.json({ success: true, data: items });
     } catch(error) {
         next(error);
     }
 });
+
 
 app.post('/api/bids', authenticateToken, async (req, res, next) => {
     if (req.user.role !== 'Vendor') return res.status(403).json({ success: false, message: 'Forbidden' });
@@ -221,20 +272,30 @@ app.post('/api/bids', authenticateToken, async (req, res, next) => {
     let connection;
     try {
         connection = await dbPool.getConnection();
-        const { bids } = req.body;
+        const { bids } = req.body; // Bids will now contain original_item_ids
         
         await connection.beginTransaction();
+
         for (const bid of bids) {
-            const [[countResult]] = await connection.query('SELECT COUNT(*) as count FROM bidding_history_log WHERE item_id = ? AND vendor_id = ?', [bid.item_id, req.user.userId]);
+            const originalItemIds = bid.original_item_ids.split(',');
+
+            // Check bid limit for the first item (as it's a consolidated bid)
+            const [[countResult]] = await connection.query('SELECT COUNT(*) as count FROM bidding_history_log WHERE item_id = ? AND vendor_id = ?', [originalItemIds[0], req.user.userId]);
             if (countResult.count >= 3) {
                  await connection.rollback();
-                 return res.status(403).json({ success: false, message: `You have reached the maximum of 3 bids for this item.` });
+                 return res.status(403).json({ success: false, message: `You have reached the maximum of 3 bids for item ${bid.item_name}.` });
             }
 
-            await connection.query('DELETE FROM bids WHERE item_id = ? AND vendor_id = ?', [bid.item_id, req.user.userId]);
-            const [result] = await connection.query("INSERT INTO bids (item_id, vendor_id, bid_amount, ex_works_rate, freight_rate, comments, bid_status) VALUES (?, ?, ?, ?, ?, ?, ?)", [bid.item_id, req.user.userId, bid.bid_amount, bid.ex_works_rate, bid.freight_rate, bid.comments, 'Submitted']);
-            
-            await connection.query("INSERT INTO bidding_history_log (bid_id, item_id, vendor_id, bid_amount, ex_works_rate, freight_rate, bid_status, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())", [result.insertId, bid.item_id, req.user.userId, bid.bid_amount, bid.ex_works_rate, bid.freight_rate, 'Submitted']);
+            // Apply the same bid to all original items
+            for (const itemId of originalItemIds) {
+                await connection.query('DELETE FROM bids WHERE item_id = ? AND vendor_id = ?', [itemId, req.user.userId]);
+                
+                const [result] = await connection.query("INSERT INTO bids (item_id, vendor_id, bid_amount, ex_works_rate, freight_rate, comments, bid_status) VALUES (?, ?, ?, ?, ?, ?, ?)", 
+                    [itemId, req.user.userId, bid.bid_amount, bid.ex_works_rate, bid.freight_rate, bid.comments, 'Submitted']);
+                
+                await connection.query("INSERT INTO bidding_history_log (bid_id, item_id, vendor_id, bid_amount, ex_works_rate, freight_rate, bid_status, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())", 
+                    [result.insertId, itemId, req.user.userId, bid.bid_amount, bid.ex_works_rate, bid.freight_rate, 'Submitted']);
+            }
         }
         await connection.commit();
         res.json({ success: true, message: 'Bids submitted successfully!' });
@@ -246,14 +307,14 @@ app.post('/api/bids', authenticateToken, async (req, res, next) => {
     }
 });
 
-app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next) => {
+app.get('/api/vendor/dashboard-stats', async (req, res, next) => {
     try {
         const vendorId = req.user.userId;
         const assignedQuery = "SELECT COUNT(DISTINCT ri.item_id) as count FROM requisition_items ri JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id WHERE ra.vendor_id = ? AND ri.status = 'Active'";
-        const submittedQuery = "SELECT COUNT(*) as count FROM bids WHERE vendor_id = ?";
+        const submittedQuery = "SELECT COUNT(DISTINCT item_code) as count FROM bids b JOIN requisition_items ri ON b.item_id = ri.item_id WHERE b.vendor_id = ?";
         const wonQuery = "SELECT COUNT(*) as count, SUM(awarded_amount) as totalValue FROM awarded_contracts WHERE vendor_id = ?";
-        const needsBidQuery = "SELECT COUNT(DISTINCT ri.item_id) as count FROM requisition_items ri JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id WHERE ra.vendor_id = ? AND ri.status = 'Active' AND ri.item_id NOT IN (SELECT item_id FROM bids WHERE vendor_id = ?)";
-        const l1BidsQuery = "SELECT COUNT(*) as count FROM bids b WHERE b.vendor_id = ? AND b.bid_amount = (SELECT MIN(bid_amount) FROM bids WHERE item_id = b.item_id)";
+        const needsBidQuery = "SELECT COUNT(DISTINCT ri.item_code) as count FROM requisition_items ri JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id WHERE ra.vendor_id = ? AND ri.status = 'Active' AND ri.item_id NOT IN (SELECT item_id FROM bids WHERE vendor_id = ?)";
+        const l1BidsQuery = "SELECT COUNT(DISTINCT b.item_id) as count FROM bids b WHERE b.vendor_id = ? AND b.bid_amount = (SELECT MIN(bid_amount) FROM bids WHERE item_id = b.item_id)";
         const bidStatusQuery = "SELECT bid_status, COUNT(*) as count FROM bids WHERE vendor_id = ? GROUP BY bid_status";
         const recentItemsQuery = `SELECT ri.item_name, ri.requisition_id, ri.item_sl_no, ra.assigned_at FROM requisition_items ri JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id WHERE ra.vendor_id = ? AND ri.status = 'Active' ORDER BY ra.assigned_at DESC LIMIT 5`;
 
@@ -289,6 +350,7 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
         next(error);
     }
 });
+
 
 app.get('/api/vendor/my-bids', authenticateToken, async (req, res, next) => {
     try {
@@ -384,9 +446,9 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
 app.get('/api/requirements/pending', authenticateToken, isAdmin, async (req, res, next) => {
     try {
         const query = `
-          SELECT r.requisition_id, r.created_at, u.full_name as creator,
-          (SELECT GROUP_CONCAT(u2.user_id, ':', u2.full_name SEPARATOR '||') FROM requisition_assignments ra JOIN users u2 ON ra.vendor_id = u2.user_id WHERE ra.requisition_id = r.requisition_id) as suggested_vendors
-          FROM requisitions r JOIN users u ON r.created_by = u.user_id WHERE r.status = 'Pending Approval' GROUP BY r.requisition_id ORDER BY r.requisition_id DESC`;
+         SELECT r.requisition_id, r.created_at, u.full_name as creator,
+         (SELECT GROUP_CONCAT(u2.user_id, ':', u2.full_name SEPARATOR '||') FROM requisition_assignments ra JOIN users u2 ON ra.vendor_id = u2.user_id WHERE ra.requisition_id = r.requisition_id) as suggested_vendors
+         FROM requisitions r JOIN users u ON r.created_by = u.user_id WHERE r.status = 'Pending Approval' GROUP BY r.requisition_id ORDER BY r.requisition_id DESC`;
         const [groupedReqs] = await dbPool.query(query);
         const [pendingItems] = await dbPool.query("SELECT * FROM requisition_items WHERE status = 'Pending Approval'");
         const [allVendors] = await dbPool.query("SELECT user_id, full_name FROM users WHERE role = 'Vendor' AND is_active = 1");
@@ -518,7 +580,7 @@ app.post('/api/contracts/award', authenticateToken, isAdmin, async (req, res, ne
 
 app.get('/api/admin/awarded-contracts', authenticateToken, isAdmin, async (req, res, next) => {
     try {
-        // FIX: Explicitly select item_name from requisition_items to ensure it's correct.
+        // FIX: Added quantity and unit for the download report feature.
         const query = `
             SELECT 
                 ac.contract_id, ac.item_id, ac.requisition_id, ac.vendor_id, 
@@ -526,6 +588,8 @@ app.get('/api/admin/awarded-contracts', authenticateToken, isAdmin, async (req, 
                 ac.winning_bid_id, ac.remarks, ac.awarded_date,
                 ri.item_name, 
                 ri.item_sl_no,
+                ri.quantity,
+                ri.unit,
                 u.full_name as vendor_name
             FROM awarded_contracts ac
             JOIN users u ON ac.vendor_id = u.user_id
@@ -541,14 +605,15 @@ app.get('/api/admin/awarded-contracts', authenticateToken, isAdmin, async (req, 
 app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res, next) => {
     try {
         const { startDate, endDate } = req.body;
-        let dateFilter = '1=1';
+        
         const params = [];
-
+        let dateFilter = '1=1';
         if (startDate && endDate) {
             dateFilter = 'ac.awarded_date BETWEEN ? AND ?';
             params.push(startDate, `${endDate} 23:59:59`);
         }
         
+        // BUG FIX: Correctly parameterize all queries to avoid syntax errors.
         const kpiQuery = `
             SELECT
                 SUM(ac.awarded_amount) AS totalSpend,
@@ -588,10 +653,9 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
                 WHERE b1.bid_amount > (SELECT MIN(b2.bid_amount) FROM bids b2 WHERE b2.item_id = b1.item_id)
                 GROUP BY b1.item_id
             ) l2_bids ON ac.item_id = l2_bids.item_id
-            ${(startDate && endDate) ? `WHERE ac.awarded_date BETWEEN ? AND ?` : ''}
+            ${params.length > 0 ? `WHERE ac.awarded_date BETWEEN ? AND ?` : ''}
             GROUP BY month ORDER BY month ASC`;
 
-        // FIX: Join with other tables to get all required data for the report, especially item_name.
         const detailedReportQuery = `
             SELECT 
                 ac.contract_id, ac.item_id, ac.requisition_id,
@@ -608,11 +672,11 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
         const [
             [[kpis]], [[savings]], topVendors, categorySpend, savingsTrend, detailedReport
         ] = await Promise.all([
-            dbPool.query(kpiQuery, [...params, ...params, ...params]),
+            dbPool.query(kpiQuery, [...params, ...params, ...params, ...params]),
             dbPool.query(savingsQuery, params),
             dbPool.query(vendorSpendQuery, params),
             dbPool.query(categorySpendQuery, params),
-            dbPool.query(savingsTrendQuery, (startDate && endDate) ? params : []),
+            dbPool.query(savingsTrendQuery, params),
             dbPool.query(detailedReportQuery, params)
         ]);
 
@@ -645,6 +709,7 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
         next(error);
     }
 });
+
 
 app.post('/api/items/reopen-bidding', authenticateToken, isAdmin, async (req, res, next) => {
     let connection;
@@ -801,6 +866,17 @@ app.get('/api/users/vendors', authenticateToken, async (req, res, next) => {
     }
 });
 
+// NEW HELPER ENDPOINT
+app.get('/api/users/admins', authenticateToken, async (req, res, next) => {
+    try {
+        const [admins] = await dbPool.query("SELECT email FROM users WHERE role = 'Admin' AND is_active = 1");
+        res.json({ success: true, data: admins.map(a => a.email) });
+    } catch (error) {
+        next(error);
+    }
+});
+
+
 app.put('/api/users/:id', authenticateToken, isAdmin, async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -859,7 +935,7 @@ app.post('/api/users/set-password', authenticateToken, async (req, res, next) =>
     }
 });
 
-// --- 6. MESSAGING API ---
+// --- 6. MESSAGING & NOTIFICATIONS API ---
 app.post('/api/messages', authenticateToken, async (req, res, next) => {
     try {
         const { recipientId, messageBody } = req.body;
@@ -889,7 +965,6 @@ app.get('/api/users/chattable', authenticateToken, async (req, res, next) => {
     }
 });
 
-// BUG FIX: Corrected query for ONLY_FULL_GROUP_BY SQL mode
 app.get('/api/conversations', authenticateToken, async (req, res, next) => {
     try {
         const myId = req.user.userId;
@@ -954,6 +1029,38 @@ app.get('/api/messages/:otherUserId', authenticateToken, async (req, res, next) 
     }
 });
 
+// NEW FEATURE: Notifications Endpoint
+app.get('/api/notifications', authenticateToken, async (req, res, next) => {
+    try {
+        const { userId, role } = req.user;
+        let notifications = [];
+
+        if (role === 'Admin') {
+            const [pendingUsers] = await dbPool.query("SELECT COUNT(*) as count FROM pending_users");
+            if (pendingUsers[0].count > 0) {
+                notifications.push({ text: `${pendingUsers[0].count} new user(s) awaiting approval.`, view: 'admin-pending-users-view' });
+            }
+            const [pendingReqs] = await dbPool.query("SELECT COUNT(DISTINCT requisition_id) as count FROM requisitions WHERE status = 'Pending Approval'");
+            if (pendingReqs[0].count > 0) {
+                notifications.push({ text: `${pendingReqs[0].count} new requisition(s) to approve.`, view: 'admin-pending-reqs-view' });
+            }
+        } else if (role === 'Vendor') {
+            const [newItems] = await dbPool.query("SELECT COUNT(DISTINCT ri.item_id) as count FROM requisition_items ri JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id WHERE ra.vendor_id = ? AND ri.status = 'Active' AND ri.created_at > DATE_SUB(NOW(), INTERVAL 1 DAY)", [userId]);
+            if (newItems[0].count > 0) {
+                 notifications.push({ text: `${newItems[0].count} new item(s) assigned for bidding.`, view: 'vendor-requirements-view' });
+            }
+        } else { // User
+            const [processedItems] = await dbPool.query("SELECT COUNT(*) as count FROM requisitions WHERE created_by = ? AND status = 'Processed' AND approved_at > DATE_SUB(NOW(), INTERVAL 1 DAY)", [userId]);
+            if(processedItems[0].count > 0) {
+                 notifications.push({ text: `${processedItems[0].count} of your requisitions have been processed.`, view: 'user-status-view' });
+            }
+        }
+        res.json({ success: true, data: notifications });
+    } catch (error) {
+        next(error);
+    }
+});
+
 // --- 7. MISC & EMAIL ---
 app.post('/api/send-email', authenticateToken, async (req, res, next) => {
     if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_API_KEY.startsWith('SG.')) {
@@ -962,13 +1069,19 @@ app.post('/api/send-email', authenticateToken, async (req, res, next) => {
         return res.json({ success: true, message: 'Email service not configured, but proceeding.' });
     }
 
-    const { recipient, subject, htmlBody } = req.body;
+    // NEW FEATURE: Handle CC
+    const { recipient, subject, htmlBody, cc } = req.body;
     const msg = {
         to: recipient,
         from: process.env.FROM_EMAIL,
         subject: subject,
         html: htmlBody,
     };
+
+    if (cc && cc.length > 0) {
+        msg.cc = cc;
+    }
+
     try {
         await sgMail.send(msg);
         res.json({ success: true, message: 'Email sent successfully.' });
