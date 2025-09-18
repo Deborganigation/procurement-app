@@ -315,7 +315,6 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
         const needsBidQuery = "SELECT COUNT(DISTINCT ri.item_code) as count FROM requisition_items ri JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id WHERE ra.vendor_id = ? AND ri.status = 'Active' AND ri.item_id NOT IN (SELECT item_id FROM bids WHERE vendor_id = ?)";
         const l1BidsQuery = "SELECT COUNT(DISTINCT b.item_id) as count FROM bids b WHERE b.vendor_id = ? AND b.bid_amount = (SELECT MIN(bid_amount) FROM bids WHERE item_id = b.item_id)";
         
-        // FIX: This query had a potential to return 'undefined' on the frontend if the join failed. I've confirmed it's correct but double-checked the destructuring below.
         const recentBidsQuery = `SELECT b.bid_amount, b.bid_status, ri.item_name FROM bids b JOIN requisition_items ri ON b.item_id = ri.item_id WHERE b.vendor_id = ? ORDER BY b.submitted_at DESC LIMIT 5`;
         
         const avgRankQuery = `SELECT AVG(\`rank\`) as avg_rank FROM (SELECT b.bid_amount, (SELECT COUNT(*) + 1 FROM bids b2 WHERE b2.item_id = b.item_id AND b2.bid_amount < b.bid_amount) as \`rank\` FROM bids b WHERE b.vendor_id = ? AND b.bid_status IN ('Submitted', 'Awarded', 'Rejected') ) as ranked_bids`;
@@ -355,7 +354,7 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
                 totalWonValue: won.totalValue || 0,
                 needsBid: needsBid.count,
                 l1Bids: l1Bids.count,
-                recentBids: recentBids, // This is already an array of objects
+                recentBids: recentBids,
                 avgRank: avgRankResult.avg_rank,
                 winRate: winRate,
             }
@@ -408,7 +407,6 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
         
         const latestReqsQuery = `SELECT r.requisition_id, r.status, r.created_at, u.full_name as creator_name, (SELECT COUNT(*) FROM requisition_items ri WHERE ri.requisition_id = r.requisition_id) as item_count FROM requisitions r JOIN users u ON r.created_by = u.user_id ORDER BY r.created_at DESC LIMIT 5`;
         
-        // FIX: The column name is 'submitted_at' in the pending_users table.
         const notificationsQuery = `SELECT CONCAT('New user registered: ', full_name) AS text, submitted_at AS timestamp FROM pending_users ORDER BY submitted_at DESC LIMIT 5`;
         
         const reqTrendsQuery = `SELECT DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as count FROM requisitions GROUP BY month ORDER BY month ASC`;
@@ -420,7 +418,6 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
             ORDER BY bid_count DESC LIMIT 5
         `;
 
-        // FIX: Corrected destructuring syntax.
         const [
             [activeItemsRows], [pendingUsersRows], [awardedRows], [pendingReqsRows],
             latestReqs, notifications, reqTrends, biddingActivity
@@ -435,7 +432,6 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
             dbPool.query(biddingActivityQuery)
         ]);
 
-        // Access the first element of each query result array for the count.
         const activeItems = activeItemsRows[0];
         const pendingUsers = pendingUsersRows[0];
         const awarded = awardedRows[0];
