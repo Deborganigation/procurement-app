@@ -210,34 +210,40 @@ app.post('/api/bids/bulk', authenticateToken, async (req, res, next) => {
             const { itemId, ex_works_rate, freight_rate, comments } = bid;
             const vendorId = req.user.userId;
 
-            const [[countResult]] = await connection.query('SELECT COUNT(*) as count FROM bidding_history_log WHERE item_id = ? AND vendor_id = ?', [itemId, vendorId]);
+            try {
+                const [[countResult]] = await connection.query('SELECT COUNT(*) as count FROM bidding_history_log WHERE item_id = ? AND vendor_id = ?', [itemId, vendorId]);
 
-            if (countResult.count >= 3) {
-                const [[itemDetails]] = await connection.query('SELECT item_name FROM requisition_items WHERE item_id = ?', [itemId]);
-                skippedBids.push(itemDetails ? itemDetails.item_name : `Item ID ${itemId}`);
-                continue;
+                if (countResult.count >= 3) {
+                    const [[itemDetails]] = await connection.query('SELECT item_name FROM requisition_items WHERE item_id = ?', [itemId]);
+                    skippedBids.push(itemDetails ? itemDetails.item_name : `Item ID ${itemId}`);
+                    continue;
+                }
+
+                const [[itemDetails]] = await connection.query('SELECT quantity, item_name FROM requisition_items WHERE item_id = ?', [itemId]);
+                if (!itemDetails) {
+                    skippedBids.push(`Item ID ${itemId} (Not Found)`);
+                    continue;
+                }
+
+                const totalBidAmount = (parseFloat(ex_works_rate) + parseFloat(freight_rate || 0)) * parseFloat(itemDetails.quantity);
+
+                await connection.query('DELETE FROM bids WHERE item_id = ? AND vendor_id = ?', [itemId, vendorId]);
+                const [result] = await connection.query("INSERT INTO bids (item_id, vendor_id, bid_amount, ex_works_rate, freight_rate, comments, bid_status, submitted_at) VALUES (?, ?, ?, ?, ?, ?, 'Submitted', NOW())", [itemId, vendorId, totalBidAmount, ex_works_rate, freight_rate || 0, comments]);
+                await connection.query("INSERT INTO bidding_history_log (bid_id, item_id, vendor_id, bid_amount, ex_works_rate, freight_rate, bid_status, submitted_at) VALUES (?, ?, ?, ?, ?, ?, 'Submitted', NOW())", [result.insertId, itemId, vendorId, totalBidAmount, ex_works_rate, freight_rate || 0]);
+
+                submittedCount++;
+            } catch (itemError) {
+                console.error(`Error processing bid for item ID ${itemId}:`, itemError);
+                const [[itemInfo]] = await connection.query('SELECT item_name FROM requisition_items WHERE item_id = ?', [itemId]).catch(() => [[{item_name: `ID ${itemId}`}]]);
+                skippedBids.push(`${itemInfo.item_name} (processing error)`);
             }
-
-            const [[itemDetails]] = await connection.query('SELECT quantity, item_name FROM requisition_items WHERE item_id = ?', [itemId]);
-            if (!itemDetails) {
-                 skippedBids.push(`Item ID ${itemId} (Not Found)`);
-                 continue;
-            }
-            
-            const totalBidAmount = (parseFloat(ex_works_rate) + parseFloat(freight_rate || 0)) * parseFloat(itemDetails.quantity);
-
-            await connection.query('DELETE FROM bids WHERE item_id = ? AND vendor_id = ?', [itemId, vendorId]);
-            const [result] = await connection.query("INSERT INTO bids (item_id, vendor_id, bid_amount, ex_works_rate, freight_rate, comments, bid_status, submitted_at) VALUES (?, ?, ?, ?, ?, ?, 'Submitted', NOW())", [itemId, vendorId, totalBidAmount, ex_works_rate, freight_rate || 0, comments]);
-            await connection.query("INSERT INTO bidding_history_log (bid_id, item_id, vendor_id, bid_amount, ex_works_rate, freight_rate, bid_status, submitted_at) VALUES (?, ?, ?, ?, ?, ?, 'Submitted', NOW())", [result.insertId, itemId, vendorId, totalBidAmount, ex_works_rate, freight_rate || 0]);
-            
-            submittedCount++;
         }
 
         await connection.commit();
-        
+
         let message = `${submittedCount} bid(s) submitted successfully.`;
         if (skippedBids.length > 0) {
-            message += ` The following items were skipped (bid limit reached): ${skippedBids.join(', ')}.`;
+            message += ` The following items were skipped (limit reached or error): ${skippedBids.join(', ')}.`;
         }
 
         res.json({ success: true, message });
@@ -262,7 +268,7 @@ app.get('/api/vendor/my-bids', authenticateToken, async (req, res, next) => {
                  FROM bids b2 
                  WHERE b2.item_id = bhl.item_id AND b2.bid_amount < bhl.bid_amount) AS \`rank\`
             FROM bidding_history_log bhl
-            JOIN requisition_items ri ON bhl.item_id = ri.item_id
+            LEFT JOIN requisition_items ri ON bhl.item_id = ri.item_id
             WHERE bhl.vendor_id = ?
             ORDER BY bhl.submitted_at DESC
         `;
@@ -332,10 +338,10 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
             pendingUsers: "SELECT COUNT(*) as count FROM pending_users",
             awardedContracts: "SELECT COUNT(*) as count FROM awarded_contracts",
             pendingRequisitions: "SELECT COUNT(DISTINCT requisition_id) as count FROM requisitions WHERE status = 'Pending Approval'",
-            latestRequisitions: `SELECT r.requisition_id, r.status, r.created_at, u.full_name as creator_name, (SELECT COUNT(*) FROM requisition_items ri WHERE ri.requisition_id = r.requisition_id) as item_count FROM requisitions r LEFT JOIN users u ON r.created_by = u.user_id ORDER BY r.created_at DESC LIMIT 5`,
+            latestRequisitions: `SELECT r.requisition_id, r.status, r.created_at, COALESCE(u.full_name, 'N/A') as creator_name, (SELECT COUNT(*) FROM requisition_items ri WHERE ri.requisition_id = r.requisition_id) as item_count FROM requisitions r LEFT JOIN users u ON r.created_by = u.user_id ORDER BY r.created_at DESC LIMIT 5`,
             notifications: `SELECT CONCAT('New user registered: ', full_name) AS text, submitted_at AS timestamp FROM pending_users ORDER BY submitted_at DESC LIMIT 5`,
             reqTrends: `SELECT DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as count FROM requisitions GROUP BY month ORDER BY month ASC`,
-            biddingActivity: `SELECT u.full_name, COUNT(b.bid_id) as bid_count FROM bids b JOIN users u ON b.vendor_id = u.user_id GROUP BY u.full_name ORDER BY bid_count DESC LIMIT 5`
+            biddingActivity: `SELECT u.full_name, COUNT(b.bid_id) as bid_count FROM bids b JOIN users u ON b.vendor_id = u.user_id WHERE u.full_name IS NOT NULL GROUP BY u.full_name ORDER BY bid_count DESC LIMIT 5`
         };
         const [
             [[activeItems]], [[pendingUsers]], [[awardedContracts]], [[pendingRequisitions]], latestRequisitions, notifications, reqTrends, biddingActivity
