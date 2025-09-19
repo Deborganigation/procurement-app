@@ -104,7 +104,7 @@ app.post('/api/bids/bulk', authenticateToken, async (req, res, next) => { if (re
 app.get('/api/vendor/my-bids', authenticateToken, async (req, res, next) => { try { const query = ` SELECT bhl.*, COALESCE(ri.item_name, 'Item Deleted') as item_name, ri.requisition_id, ri.item_sl_no, (SELECT COUNT(DISTINCT b2.vendor_id) + 1 FROM bids b2 WHERE b2.item_id = bhl.item_id AND b2.bid_amount < bhl.bid_amount) AS \`rank\` FROM bidding_history_log bhl LEFT JOIN requisition_items ri ON bhl.item_id = ri.item_id WHERE bhl.vendor_id = ? ORDER BY bhl.submitted_at DESC `; const [bids] = await dbPool.query(query, [req.user.userId]); res.json({ success: true, data: bids }); } catch (error) { next(error); }});
 app.get('/api/vendor/my-awarded-contracts', authenticateToken, async (req, res, next) => { try { const [contracts] = await dbPool.query(`SELECT ac.*, ri.item_name, ri.requisition_id, ri.item_sl_no FROM awarded_contracts ac JOIN requisition_items ri ON ac.item_id = ri.item_id WHERE ac.vendor_id = ? AND ri.status = 'Awarded' ORDER BY ac.awarded_date DESC`, [req.user.userId]); res.json({ success: true, data: contracts }); } catch (error) { next(error); }});
 
-// ===== FIX: Restored full Vendor Dashboard endpoint =====
+// ===== FIX: Restored and corrected the full Vendor Dashboard endpoint =====
 app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next) => {
     try {
         const vendorId = req.user.userId;
@@ -114,7 +114,7 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
             contractsWon: "SELECT COUNT(*) as count, SUM(awarded_amount) as totalValue FROM awarded_contracts WHERE vendor_id = ?",
             needsBid: "SELECT COUNT(*) as count FROM requisition_items ri JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id WHERE ra.vendor_id = ? AND ri.status = 'Active' AND ri.item_id NOT IN (SELECT item_id FROM bids WHERE vendor_id = ?)",
             l1Bids: "SELECT COUNT(*) as count FROM (SELECT item_id FROM bids WHERE vendor_id = ? AND bid_amount = (SELECT MIN(bid_amount) FROM bids b2 WHERE b2.item_id = bids.item_id) GROUP BY item_id) as l1_bids",
-            recentBids: `SELECT bhl.bid_amount, bhl.bid_status, COALESCE(ri.item_name, 'Item Deleted') as item_name FROM bidding_history_log bhl LEFT JOIN requisition_items ri ON bhl.item_id = ri.item_id WHERE bhl.vendor_id = ? ORDER BY bhl.submitted_at DESC LIMIT 5`,
+            recentBids: `SELECT bhl.bid_amount, bhl.bid_status, bhl.submitted_at, COALESCE(ri.item_name, 'Item Deleted') as item_name FROM bidding_history_log bhl LEFT JOIN requisition_items ri ON bhl.item_id = ri.item_id WHERE bhl.vendor_id = ? ORDER BY bhl.submitted_at DESC LIMIT 5`,
             avgRank: `SELECT AVG(t.rank) as avg_rank FROM (SELECT (SELECT COUNT(DISTINCT b2.vendor_id) + 1 FROM bids b2 WHERE b2.item_id = b.item_id AND b2.bid_amount < b.bid_amount) as \`rank\` FROM bids b WHERE b.vendor_id = ?) as t`
         };
         const [
@@ -148,7 +148,7 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
 });
 
 // --- 4. ADMIN FEATURES ---
-// ===== FIX: Restored full Admin Dashboard endpoint =====
+// ===== FIX: Restored and corrected the full Admin Dashboard endpoint =====
 app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, res, next) => {
     try {
         const queries = {
@@ -156,14 +156,14 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
             pendingUsers: "SELECT COUNT(*) as count FROM pending_users",
             awardedContracts: "SELECT COUNT(*) as count FROM awarded_contracts",
             pendingRequisitions: "SELECT COUNT(DISTINCT requisition_id) as count FROM requisitions WHERE status = 'Pending Approval'",
-            latestRequisitions: `SELECT r.requisition_id, r.status, r.created_at, COALESCE(u.full_name, 'Unknown User') as creator_name, COALESCE((SELECT COUNT(*) FROM requisition_items ri WHERE ri.requisition_id = r.requisition_id), 0) as item_count FROM requisitions r LEFT JOIN users u ON r.created_by = u.user_id ORDER BY r.created_at DESC LIMIT 5`,
+            latestRequisitions: `SELECT r.requisition_id, COALESCE(r.status, 'N/A') as status, r.created_at, COALESCE(u.full_name, 'Unknown User') as creator_name, COALESCE((SELECT COUNT(*) FROM requisition_items ri WHERE ri.requisition_id = r.requisition_id), 0) as item_count FROM requisitions r LEFT JOIN users u ON r.created_by = u.user_id ORDER BY r.created_at DESC LIMIT 5`,
             notifications: `
                 (SELECT CONCAT(COUNT(*), ' new user(s) awaiting approval.') as text, 'admin-pending-users-view' as view FROM pending_users HAVING COUNT(*) > 0)
                 UNION
                 (SELECT CONCAT(COUNT(DISTINCT requisition_id), ' new requisition(s) to approve.') as text, 'admin-pending-reqs-view' as view FROM requisitions WHERE status = 'Pending Approval' HAVING COUNT(DISTINCT requisition_id) > 0)
             `,
             reqTrends: `SELECT DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as count FROM requisitions GROUP BY month ORDER BY month ASC`,
-            biddingActivity: `SELECT u.full_name, COUNT(b.bid_id) as bid_count FROM bids b LEFT JOIN users u ON b.vendor_id = u.user_id WHERE u.full_name IS NOT NULL AND u.full_name != '' GROUP BY u.full_name ORDER BY bid_count DESC LIMIT 5`
+            biddingActivity: `SELECT u.full_name, COUNT(b.bid_id) as bid_count FROM bids b JOIN users u ON b.vendor_id = u.user_id WHERE u.role = 'Vendor' AND u.full_name IS NOT NULL AND u.full_name != '' GROUP BY u.user_id, u.full_name ORDER BY bid_count DESC LIMIT 5`
         };
         const [
             [[activeItems]], [[pendingUsers]], [[awardedContracts]], [[pendingRequisitions]], latestRequisitions, notifications, reqTrends, biddingActivity
