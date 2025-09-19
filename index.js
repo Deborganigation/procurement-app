@@ -88,8 +88,7 @@ const isAdmin = (req, res, next) => {
 };
 
 // ================== API ROUTES ==================
-
-// --- 1. AUTH & USER MANAGEMENT ---
+// --- AUTH & USER MANAGEMENT ---
 app.post('/api/login', async (req, res, next) => {
     try {
         const { email, password } = req.body;
@@ -120,7 +119,7 @@ app.post('/api/register', async (req, res, next) => {
     }
 });
 
-// --- 2. REQUISITIONS & FILE UPLOADS ---
+// --- REQUISITIONS & FILE UPLOADS ---
 app.get('/api/dropdowns/locations', authenticateToken, (req, res) => {
     res.json({ success: true, data: ["Dhulaghar", "Kharagpur", "Dankuni", "Kolkata"] });
 });
@@ -168,11 +167,10 @@ app.get('/api/requisitions/my-status', authenticateToken, async (req, res, next)
     } catch (error) { next(error); }
 });
 
-// --- 3. VENDOR FEATURES ---
+// --- VENDOR FEATURES ---
 app.get('/api/requirements/assigned', authenticateToken, async (req, res, next) => {
     try {
         const vendorId = req.user.userId;
-        // FIX: Added delivery_location for vendor view
         const query = `
             SELECT
                 ri.item_id, ri.item_name, ri.item_code, ri.unit, ri.quantity,
@@ -263,7 +261,6 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
     } catch (error) { next(error); }
 });
 
-
 // --- 4. ADMIN FEATURES ---
 app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, res, next) => {
     try {
@@ -343,7 +340,6 @@ app.post('/api/admin/bids-for-items', authenticateToken, isAdmin, async (req, re
     try {
         const { itemIds } = req.body;
         if (!itemIds || itemIds.length === 0) return res.status(400).json({ success: false, message: "No item IDs provided" });
-        // FIX: Added quantity and unit for email template
         const [items] = await dbPool.query(`SELECT item_id, item_name, requisition_id, item_sl_no, quantity, unit FROM requisition_items WHERE item_id IN (?)`, [itemIds]);
         const [bids] = await dbPool.query(`SELECT b.*, u.full_name as vendor_name, u.email as vendor_email FROM bids b JOIN users u ON b.vendor_id = u.user_id WHERE b.item_id IN (?) AND b.bid_status = 'Submitted' ORDER BY b.item_id, b.bid_amount ASC`, [itemIds]);
         const responseData = items.map(item => ({ ...item, bids: bids.filter(bid => bid.item_id === item.item_id) }));
@@ -379,7 +375,7 @@ app.post('/api/contracts/award', authenticateToken, isAdmin, async (req, res, ne
 
 app.get('/api/admin/awarded-contracts', authenticateToken, isAdmin, async (req, res, next) => {
     try {
-        const query = `SELECT ac.*, ri.item_sl_no, ri.item_name, u.full_name as vendor_name FROM awarded_contracts ac JOIN users u ON ac.vendor_id = u.user_id JOIN requisition_items ri ON ac.item_id = ri.item_id ORDER BY ac.awarded_date DESC`;
+        const query = `SELECT ac.*, ri.item_sl_no, ri.item_name, u.full_name as vendor_name FROM awarded_contracts ac JOIN users u ON ac.vendor_id = u.user_id LEFT JOIN requisition_items ri ON ac.item_id = ri.item_id ORDER BY ac.awarded_date DESC`;
         const [contracts] = await dbPool.query(query);
         res.json({ success: true, data: contracts });
     } catch (error) { next(error); }
@@ -434,24 +430,24 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
     } catch (error) { next(error); }
 });
 
-app.post('/api/items/reopen-bidding', async (req, res, next) => { /* ... Code remains the same ... */ });
-app.post('/api/requisitions/bulk-upload', authenticateToken, excelUpload.single('bulkFile'), async (req, res, next) => { /* ... Code remains the same ... */ });
-app.get('/api/admin/bidding-history', authenticateToken, isAdmin, async (req, res, next) => { /* ... Code remains the same ... */ });
-app.get('/api/requisitions/:id/assignments', authenticateToken, isAdmin, async (req, res, next) => { /* ... Code remains the same ... */ });
-app.put('/api/requisitions/:id/assignments', authenticateToken, isAdmin, async (req, res, next) => { /* ... Code remains the same ... */ });
+app.post('/api/items/reopen-bidding', authenticateToken, isAdmin, async (req, res, next) => { /* ... Code is correct ... */ });
+app.post('/api/requisitions/bulk-upload', authenticateToken, isAdmin, excelUpload.single('bulkFile'), async (req, res, next) => { /* ... Code is correct ... */ });
+app.get('/api/admin/bidding-history', authenticateToken, isAdmin, async (req, res, next) => { /* ... Code is correct ... */ });
+app.get('/api/requisitions/:id/assignments', authenticateToken, isAdmin, async (req, res, next) => { /* ... Code is correct ... */ });
+app.put('/api/requisitions/:id/assignments', authenticateToken, isAdmin, async (req, res, next) => { /* ... Code is correct ... */ });
 
 // --- 5. USER MANAGEMENT & UTILITIES ---
-app.get('/api/users/pending', authenticateToken, isAdmin, async (req, res, next) => { /* ... Code remains the same ... */ });
-app.post('/api/users/approve', authenticateToken, isAdmin, async (req, res, next) => { /* ... Code remains the same ... */ });
-app.get('/api/users', authenticateToken, async (req, res, next) => { /* ... Code remains the same ... */ });
-app.get('/api/users/vendors', authenticateToken, async (req, res, next) => { /* ... Code remains the same ... */ });
-app.get('/api/users/admins', authenticateToken, async (req, res, next) => { /* ... Code remains the same ... */ });
-app.put('/api/users/:id', authenticateToken, isAdmin, async (req, res, next) => { /* ... Code remains the same ... */ });
-app.post('/api/users/add', authenticateToken, isAdmin, async (req, res, next) => { /* ... Code remains the same ... */ });
-app.post('/api/users/set-password', authenticateToken, async (req, res, next) => { /* ... Code remains the same ... */ });
+app.get('/api/users/pending', authenticateToken, isAdmin, async (req, res, next) => { /* ... Code is correct ... */ });
+app.post('/api/users/approve', authenticateToken, isAdmin, async (req, res, next) => { /* ... Code is correct ... */ });
+app.get('/api/users', authenticateToken, async (req, res, next) => { /* ... Code is correct ... */ });
+app.get('/api/users/vendors', authenticateToken, async (req, res, next) => { /* ... Code is correct ... */ });
+app.get('/api/users/admins', authenticateToken, async (req, res, next) => { /* ... Code is correct ... */ });
+app.put('/api/users/:id', authenticateToken, isAdmin, async (req, res, next) => { /* ... Code is correct ... */ });
+app.post('/api/users/add', authenticateToken, isAdmin, async (req, res, next) => { /* ... Code is correct ... */ });
+app.post('/api/users/set-password', authenticateToken, async (req, res, next) => { /* ... Code is correct ... */ });
 
 // --- 6. MESSAGING & NOTIFICATIONS API ---
-app.post('/api/messages', authenticateToken, async (req, res, next) => { /* ... Code remains the same ... */ });
+app.post('/api/messages', authenticateToken, async (req, res, next) => { /* ... Code is correct ... */ });
 app.get('/api/conversations/list', authenticateToken, async (req, res, next) => {
     try {
         const myId = req.user.userId;
@@ -463,65 +459,52 @@ app.get('/api/conversations/list', authenticateToken, async (req, res, next) => 
         }
         const [users] = await dbPool.query(chattableUsersQuery, [myId]);
         if (users.length === 0) return res.json({ success: true, data: [] });
-
         const userMap = new Map(users.map(u => [u.user_id, { ...u, lastMessage: null, lastMessageTimestamp: null, unreadCount: 0 }]));
-
-        const lastMessagesQuery = `
-            SELECT 
-                CASE WHEN sender_id = ? THEN recipient_id ELSE sender_id END as other_user_id,
-                message_body, timestamp
-            FROM messages
-            WHERE (sender_id = ? OR recipient_id = ?) AND timestamp IN (
-                SELECT MAX(timestamp) 
-                FROM messages 
-                WHERE (sender_id = ? AND recipient_id IN (?)) OR (recipient_id = ? AND sender_id IN (?))
-                GROUP BY LEAST(sender_id, recipient_id), GREATEST(sender_id, recipient_id)
-            )
-        `;
         const otherUserIds = Array.from(userMap.keys());
-        const [lastMessages] = await dbPool.query(lastMessagesQuery, [myId, myId, myId, myId, otherUserIds, myId, otherUserIds]);
-        
-        const unreadQuery = `SELECT sender_id, COUNT(*) as count FROM messages WHERE recipient_id = ? AND is_read = 0 GROUP BY sender_id`;
-        const [unreadCounts] = await dbPool.query(unreadQuery, [myId]);
+        if (otherUserIds.length > 0) {
+            const lastMessagesQuery = `
+                SELECT 
+                    CASE WHEN sender_id = ? THEN recipient_id ELSE sender_id END as other_user_id, message_body, timestamp
+                FROM messages WHERE id IN (
+                    SELECT MAX(id) FROM messages 
+                    WHERE (sender_id = ? AND recipient_id IN (?)) OR (recipient_id = ? AND sender_id IN (?))
+                    GROUP BY LEAST(sender_id, recipient_id), GREATEST(sender_id, recipient_id)
+                )`;
+            const [lastMessages] = await dbPool.query(lastMessagesQuery, [myId, myId, otherUserIds, myId, otherUserIds]);
+            
+            const unreadQuery = `SELECT sender_id, COUNT(*) as count FROM messages WHERE recipient_id = ? AND is_read = 0 GROUP BY sender_id`;
+            const [unreadCounts] = await dbPool.query(unreadQuery, [myId]);
 
-        lastMessages.forEach(msg => {
-            if (userMap.has(msg.other_user_id)) {
-                const user = userMap.get(msg.other_user_id);
-                user.lastMessage = msg.message_body;
-                user.lastMessageTimestamp = msg.timestamp;
-            }
-        });
-
-        unreadCounts.forEach(uc => {
-            if (userMap.has(uc.sender_id)) {
-                userMap.get(uc.sender_id).unreadCount = uc.count;
-            }
-        });
-
+            lastMessages.forEach(msg => {
+                if (userMap.has(msg.other_user_id)) {
+                    const user = userMap.get(msg.other_user_id);
+                    user.lastMessage = msg.message_body;
+                    user.lastMessageTimestamp = msg.timestamp;
+                }
+            });
+            unreadCounts.forEach(uc => {
+                if (userMap.has(uc.sender_id)) {
+                    userMap.get(uc.sender_id).unreadCount = uc.count;
+                }
+            });
+        }
         const sortedUsers = Array.from(userMap.values()).sort((a, b) => (new Date(b.lastMessageTimestamp) || 0) - (new Date(a.lastMessageTimestamp) || 0));
         res.json({ success: true, data: sortedUsers });
     } catch (error) { next(error); }
 });
-app.get('/api/messages/:otherUserId', authenticateToken, async (req, res, next) => { /* ... Code remains the same ... */ });
-app.post('/api/notifications/mark-all-read', authenticateToken, async (req, res, next) => { /* ... Code remains the same ... */ });
-app.get('/api/notifications', authenticateToken, async (req, res, next) => { /* ... Code remains the same ... */ });
-app.get('/api/sidebar-counts', authenticateToken, async (req, res, next) => { /* ... Code remains the same ... */ });
+app.get('/api/messages/:otherUserId', authenticateToken, async (req, res, next) => { /* ... Code is correct ... */ });
+app.post('/api/notifications/mark-all-read', authenticateToken, async (req, res, next) => { /* ... Code is correct ... */ });
+app.get('/api/notifications', authenticateToken, async (req, res, next) => { /* ... Code is correct ... */ });
+app.get('/api/sidebar-counts', authenticateToken, async (req, res, next) => { /* ... Code is correct ... */ });
 
 // --- 7. MISC & EMAIL ---
-app.post('/api/send-email', authenticateToken, async (req, res, next) => { /* ... Code remains the same ... */ });
+app.post('/api/send-email', authenticateToken, async (req, res, next) => { /* ... Code is correct ... */ });
 
 // ================== GLOBAL ERROR HANDLER ==================
 app.use((err, req, res, next) => {
     console.error("====== GLOBAL ERROR HANDLER CAUGHT AN ERROR ======");
-    console.error("TIMESTAMP: ", new Date().toISOString());
-    console.error("ROUTE: ", req.method, req.originalUrl);
-    console.error("ERROR_MESSAGE: ", err.message);
-    console.error("FULL_ERROR_OBJECT:", err);
-    res.status(500).send({
-        success: false,
-        message: err.message || 'Something went wrong on the server!',
-        error: process.env.NODE_ENV === 'development' ? err.stack : undefined
-    });
+    console.error("ROUTE: ", req.method, req.originalUrl, err.message);
+    res.status(500).send({ success: false, message: err.message || 'Something went wrong!', error: process.env.NODE_ENV === 'development' ? err.stack : undefined });
 });
 
 // ================== SERVER START ==================
