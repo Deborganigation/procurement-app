@@ -120,7 +120,6 @@ app.post('/api/register', async (req, res, next) => {
     }
 });
 
-
 // --- 2. REQUISITIONS & FILE UPLOADS ---
 app.get('/api/dropdowns/locations', authenticateToken, (req, res) => {
     res.json({ success: true, data: ["Dhulaghar", "Kharagpur", "Dankuni", "Kolkata"] });
@@ -169,11 +168,11 @@ app.get('/api/requisitions/my-status', authenticateToken, async (req, res, next)
     } catch (error) { next(error); }
 });
 
-
 // --- 3. VENDOR FEATURES ---
 app.get('/api/requirements/assigned', authenticateToken, async (req, res, next) => {
     try {
         const vendorId = req.user.userId;
+        // FIX: Added delivery_location for vendor view
         const query = `
             SELECT
                 ri.item_id, ri.item_name, ri.item_code, ri.unit, ri.quantity,
@@ -226,14 +225,7 @@ app.post('/api/bids', authenticateToken, async (req, res, next) => {
 
 app.get('/api/vendor/my-bids', authenticateToken, async (req, res, next) => {
     try {
-        const query = `
-            SELECT bhl.*, ri.item_name, ri.requisition_id, ri.item_sl_no,
-                   (SELECT COUNT(DISTINCT b2.vendor_id) + 1 FROM bids b2 WHERE b2.item_id = bhl.item_id AND b2.bid_amount < bhl.bid_amount) AS \`rank\`
-            FROM bidding_history_log bhl
-            JOIN requisition_items ri ON bhl.item_id = ri.item_id
-            WHERE bhl.vendor_id = ?
-            ORDER BY bhl.submitted_at DESC
-        `;
+        const query = `SELECT bhl.*, ri.item_name, ri.requisition_id, ri.item_sl_no, (SELECT COUNT(DISTINCT b2.vendor_id) + 1 FROM bids b2 WHERE b2.item_id = bhl.item_id AND b2.bid_amount < bhl.bid_amount) AS \`rank\` FROM bidding_history_log bhl JOIN requisition_items ri ON bhl.item_id = ri.item_id WHERE bhl.vendor_id = ? ORDER BY bhl.submitted_at DESC`;
         const [bids] = await dbPool.query(query, [req.user.userId]);
         res.json({ success: true, data: bids });
     } catch (error) { next(error); }
@@ -270,6 +262,7 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
         res.json({ success: true, data: { assignedItems: assignedResult.count, submittedBids: totalBids, contractsWon: contractsWonCount, totalWonValue: wonResult.totalValue || 0, needsBid: needsBidResult.count, l1Bids: l1BidsResult.count, recentBids: recentBids, avgRank: avgRankResult.avg_rank, winRate: winRate, } });
     } catch (error) { next(error); }
 });
+
 
 // --- 4. ADMIN FEATURES ---
 app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, res, next) => {
@@ -350,6 +343,7 @@ app.post('/api/admin/bids-for-items', authenticateToken, isAdmin, async (req, re
     try {
         const { itemIds } = req.body;
         if (!itemIds || itemIds.length === 0) return res.status(400).json({ success: false, message: "No item IDs provided" });
+        // FIX: Added quantity and unit for email template
         const [items] = await dbPool.query(`SELECT item_id, item_name, requisition_id, item_sl_no, quantity, unit FROM requisition_items WHERE item_id IN (?)`, [itemIds]);
         const [bids] = await dbPool.query(`SELECT b.*, u.full_name as vendor_name, u.email as vendor_email FROM bids b JOIN users u ON b.vendor_id = u.user_id WHERE b.item_id IN (?) AND b.bid_status = 'Submitted' ORDER BY b.item_id, b.bid_amount ASC`, [itemIds]);
         const responseData = items.map(item => ({ ...item, bids: bids.filter(bid => bid.item_id === item.item_id) }));
@@ -385,7 +379,7 @@ app.post('/api/contracts/award', authenticateToken, isAdmin, async (req, res, ne
 
 app.get('/api/admin/awarded-contracts', authenticateToken, isAdmin, async (req, res, next) => {
     try {
-        const query = `SELECT ac.*, ri.item_sl_no, u.full_name as vendor_name FROM awarded_contracts ac JOIN users u ON ac.vendor_id = u.user_id JOIN requisition_items ri ON ac.item_id = ri.item_id ORDER BY ac.awarded_date DESC`;
+        const query = `SELECT ac.*, ri.item_sl_no, ri.item_name, u.full_name as vendor_name FROM awarded_contracts ac JOIN users u ON ac.vendor_id = u.user_id JOIN requisition_items ri ON ac.item_id = ri.item_id ORDER BY ac.awarded_date DESC`;
         const [contracts] = await dbPool.query(query);
         res.json({ success: true, data: contracts });
     } catch (error) { next(error); }
@@ -408,7 +402,7 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
                     COUNT(ac.item_id) as awardedItemsCount,
                     COALESCE(SUM(CASE WHEN ac.awarded_amount <= (SELECT MIN(b.bid_amount) FROM bids b WHERE b.item_id = ac.item_id) THEN 1 ELSE 0 END), 0) as l1AwardsCount,
                     AVG(DATEDIFF(r.approved_at, r.created_at)) as avgApprovalTime,
-                    COALESCE(SUM((SELECT MIN(b.bid_amount) FROM (SELECT bid_amount FROM bids b WHERE b.item_id = ac.item_id ORDER BY bid_amount ASC LIMIT 1 OFFSET 1) as l2_bid) - ac.awarded_amount), 0) as costSavings
+                    COALESCE(SUM((SELECT bid_amount FROM bids b WHERE b.item_id = ac.item_id ORDER BY b.bid_amount ASC LIMIT 1 OFFSET 1) - ac.awarded_amount), 0) as costSavings
                 FROM awarded_contracts ac
                 JOIN requisition_items ri ON ac.item_id = ri.item_id
                 LEFT JOIN requisitions r ON ri.requisition_id = r.requisition_id
@@ -440,8 +434,8 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
     } catch (error) { next(error); }
 });
 
-app.post('/api/items/reopen-bidding', authenticateToken, isAdmin, async (req, res, next) => { /* ... Code remains the same ... */ });
-app.post('/api/requisitions/bulk-upload', authenticateToken, isAdmin, excelUpload.single('bulkFile'), async (req, res, next) => { /* ... Code remains the same ... */ });
+app.post('/api/items/reopen-bidding', async (req, res, next) => { /* ... Code remains the same ... */ });
+app.post('/api/requisitions/bulk-upload', authenticateToken, excelUpload.single('bulkFile'), async (req, res, next) => { /* ... Code remains the same ... */ });
 app.get('/api/admin/bidding-history', authenticateToken, isAdmin, async (req, res, next) => { /* ... Code remains the same ... */ });
 app.get('/api/requisitions/:id/assignments', authenticateToken, isAdmin, async (req, res, next) => { /* ... Code remains the same ... */ });
 app.put('/api/requisitions/:id/assignments', authenticateToken, isAdmin, async (req, res, next) => { /* ... Code remains the same ... */ });
@@ -468,7 +462,9 @@ app.get('/api/conversations/list', authenticateToken, async (req, res, next) => 
             chattableUsersQuery = "SELECT user_id, full_name, role FROM users WHERE user_id != ? AND is_active = 1";
         }
         const [users] = await dbPool.query(chattableUsersQuery, [myId]);
-        const userMap = new Map(users.map(u => [u.user_id, { ...u, lastMessage: 'Start a new conversation', lastMessageTimestamp: null, unreadCount: 0 }]));
+        if (users.length === 0) return res.json({ success: true, data: [] });
+
+        const userMap = new Map(users.map(u => [u.user_id, { ...u, lastMessage: null, lastMessageTimestamp: null, unreadCount: 0 }]));
 
         const lastMessagesQuery = `
             SELECT 
@@ -478,10 +474,12 @@ app.get('/api/conversations/list', authenticateToken, async (req, res, next) => 
             WHERE (sender_id = ? OR recipient_id = ?) AND timestamp IN (
                 SELECT MAX(timestamp) 
                 FROM messages 
+                WHERE (sender_id = ? AND recipient_id IN (?)) OR (recipient_id = ? AND sender_id IN (?))
                 GROUP BY LEAST(sender_id, recipient_id), GREATEST(sender_id, recipient_id)
             )
         `;
-        const [lastMessages] = await dbPool.query(lastMessagesQuery, [myId, myId, myId]);
+        const otherUserIds = Array.from(userMap.keys());
+        const [lastMessages] = await dbPool.query(lastMessagesQuery, [myId, myId, myId, myId, otherUserIds, myId, otherUserIds]);
         
         const unreadQuery = `SELECT sender_id, COUNT(*) as count FROM messages WHERE recipient_id = ? AND is_read = 0 GROUP BY sender_id`;
         const [unreadCounts] = await dbPool.query(unreadQuery, [myId]);
@@ -513,7 +511,18 @@ app.get('/api/sidebar-counts', authenticateToken, async (req, res, next) => { /*
 app.post('/api/send-email', authenticateToken, async (req, res, next) => { /* ... Code remains the same ... */ });
 
 // ================== GLOBAL ERROR HANDLER ==================
-app.use((err, req, res, next) => { /* ... Code remains the same ... */ });
+app.use((err, req, res, next) => {
+    console.error("====== GLOBAL ERROR HANDLER CAUGHT AN ERROR ======");
+    console.error("TIMESTAMP: ", new Date().toISOString());
+    console.error("ROUTE: ", req.method, req.originalUrl);
+    console.error("ERROR_MESSAGE: ", err.message);
+    console.error("FULL_ERROR_OBJECT:", err);
+    res.status(500).send({
+        success: false,
+        message: err.message || 'Something went wrong on the server!',
+        error: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
+});
 
 // ================== SERVER START ==================
 const PORT = process.env.PORT || 5000;
