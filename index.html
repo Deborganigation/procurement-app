@@ -82,8 +82,6 @@
         .bidding-row .not-applicable { background-color: #e9ecef; color: #6c757d; }
         .chart-container { position: relative; height: 300px; width: 100%; }
         .chart-no-data { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: var(--text-muted); font-style: italic; }
-        
-        /* ===== FIX: Added new CSS for better Chat UI ===== */
         .message-bubble { padding: 10px 15px; border-radius: 20px; margin-bottom: 10px; max-width: 75%; display: inline-block; word-wrap: break-word; }
         .message-bubble.sent { background-color: #dcf8c6; float: right; clear: both; }
         .message-bubble.received { background-color: #f1f0f0; float: left; clear: both; }
@@ -91,8 +89,6 @@
         .ticks { font-size: 0.8rem; margin-left: 5px; color: #999; }
         .ticks.read { color: #34b7f1; }
         #chat-messages { display: flex; flex-direction: column; }
-        /* ===== END FIX ===== */
-
         @media (max-width: 992px) { .sidebar { transform: translateX(-100%); width: 280px; } .sidebar.active { transform: translateX(0); } .main-content { margin-left: 0; } .sidebar-toggle-btn.desktop { display: none; } #header-title { width: 100%; text-align: center; margin-top: 10px; order: 3; } }
         @media (min-width: 993px) { .sidebar-toggle-btn.mobile { display: none; } }
     </style>
@@ -199,13 +195,21 @@
         let backgroundRefreshInterval = null;
         let itemCounter = 0;
         
+        // ===== FIX: Updated Dashboard Views =====
         const views = {
-            // ===== FIX: Simplified Admin Dashboard View =====
             'admin-dashboard-view': `<div class="row g-4 mb-4">
                 <div class="col-lg-3 col-md-6"><div class="stat-card bg-gradient-primary" onclick="navigateTo('admin-requirements-view')"><div><h5 class="mb-0">Active Items</h5><p class="display-4" id="stats-active-items">--</p></div><i class="fas fa-file-alt stat-icon"></i></div></div>
                 <div class="col-lg-3 col-md-6"><div class="stat-card bg-gradient-success" onclick="navigateTo('admin-pending-users-view')"><div><h5 class="mb-0">Pending Users</h5><p class="display-4" id="stats-pending-users">--</p></div><i class="fas fa-user-check stat-icon"></i></div></div>
                 <div class="col-lg-3 col-md-6"><div class="stat-card bg-gradient-warning" onclick="navigateTo('admin-pending-reqs-view')"><div><h5 class="mb-0">Pending Reqs</h5><p class="display-4" id="stats-pending-reqs">--</p></div><i class="fas fa-inbox stat-icon"></i></div></div>
                 <div class="col-lg-3 col-md-6"><div class="stat-card bg-gradient-info" onclick="navigateTo('admin-awarded-view')"><div><h5 class="mb-0">Items Awarded</h5><p class="display-4" id="stats-awarded-contracts">--</p></div><i class="fas fa-trophy stat-icon"></i></div></div>
+            </div>
+            <div class="row g-4">
+                <div class="col-lg-7"><div class="card h-100"><div class="card-header"><h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Requisition Trends</h5></div><div class="card-body"><div class="chart-container"><canvas id="adminRequisitionChart"></canvas></div></div></div></div>
+                <div class="col-lg-5"><div class="card h-100"><div class="card-header"><h5 class="mb-0"><i class="fas fa-users me-2"></i>Vendor Bidding Activity</h5></div><div class="card-body"><div class="chart-container"><canvas id="adminVendorBiddingChart"></canvas></div></div></div></div>
+            </div>
+            <div class="row g-4 mt-4">
+                <div class="col-lg-7"><div class="card h-100"><div class="card-header d-flex justify-content-between"><span><i class="fas fa-history me-2"></i>Latest Requisitions</span><button class="btn btn-sm btn-outline-primary" onclick="navigateTo('admin-pending-reqs-view')">View All</button></div><div class="card-body p-0"><div class="list-group list-group-flush" id="admin-latest-reqs-list"></div></div></div></div>
+                <div class="col-lg-5"><div class="card h-100"><div class="card-header"><h5 class="mb-0"><i class="fas fa-bell me-2"></i>Quick Actions</h5></div><div class="card-body p-0"><div class="list-group list-group-flush" id="admin-notifications-feed"></div></div></div></div>
             </div>`,
             'admin-pending-reqs-view': `<div class="card"><div class="card-header"><h5 class="mb-0">Pending Requisition Approvals</h5></div><div class="card-body"><div class="accordion" id="pending-reqs-accordion"></div></div></div>`,
             'admin-requirements-view': `<div class="card"><div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2"><h5 class="mb-0">All Active Requirement Items</h5><div><button class="btn btn-success btn-sm" onclick="handleAdvancedBulkAward()"><i class="fas fa-trophy me-2"></i>Award Selected</button><button class="btn btn-primary btn-sm" onclick="openBulkUploadModal()"><i class="fas fa-upload me-2"></i>Bulk Upload</button></div></div><div class="card-body table-responsive"><table class="table table-hover align-middle" id="admin-req-table"><thead class="table-light"><tr><th><input type="checkbox" onchange="toggleAllInParent(this, 'req-item-checkbox')"></th><th>Req ID</th><th>Item Name & Code</th><th>Assigned Vendors</th><th>Status</th><th>L1 Vendor</th><th>L1 Rate (₹)</th><th>Actions</th></tr></thead><tbody id="admin-req-tbody"></tbody></table></div></div>`,
@@ -214,12 +218,15 @@
             'admin-reports-view': `<div class="card mb-4"><div class="card-header"><h5 class="mb-0">Analytics Filters</h5></div><div class="card-body"><div class="row g-3 align-items-center"><div class="col-md-5"><label class="form-label form-label-sm">Start Date</label><input type="date" id="report-start-date" class="form-control form-control-sm"></div><div class="col-md-5"><label class="form-label form-label-sm">End Date</label><input type="date" id="report-end-date" class="form-control form-control-sm"></div><div class="col-md-2 d-grid"><button id="report-apply-filter" class="btn btn-primary btn-sm mt-md-3">Apply Filter</button></div></div></div></div><div class="row g-4 mb-4"><div class="col-xl-3 col-md-6"><div class="kpi-card-small"><div class="kpi-icon bg-gradient-primary"><i class="fas fa-rupee-sign"></i></div><div class="kpi-info"><h6>Total Spend</h6><p id="report-total-spend">--</p></div></div></div><div class="col-xl-3 col-md-6"><div class="kpi-card-small"><div class="kpi-icon bg-gradient-success"><i class="fas fa-percent"></i></div><div class="kpi-info"><h6>L1 Award Rate</h6><p id="report-l1-award-rate">--</p></div></div></div><div class="col-xl-3 col-md-6"><div class="kpi-card-small"><div class="kpi-icon bg-gradient-info"><i class="fas fa-check-circle"></i></div><div class="kpi-info"><h6>Items Awarded</h6><p id="report-awarded-count">--</p></div></div></div><div class="col-xl-3 col-md-6"><div class="kpi-card-small"><div class="kpi-icon bg-gradient-warning"><i class="fas fa-hand-holding-usd"></i></div><div class="kpi-info"><h6>Cost Savings</h6><p id="report-cost-savings">--</p></div></div></div></div><div class="row g-4"><div class="col-lg-6"><div class="card h-100"><div class="card-header"><h5 class="mb-0">Spend by Vendor</h5></div><div class="card-body"><div class="chart-container"><canvas id="vendorSpendChart"></canvas></div></div></div></div><div class="col-lg-6"><div class="card h-100"><div class="card-header"><h5 class="mb-0">Awarded Value Over Time</h5></div><div class="card-body"><div class="chart-container"><canvas id="awardedValueChart"></canvas></div></div></div></div></div><div class="row g-4 mt-4"><div class="col-lg-6"><div class="card h-100"><div class="card-header"><h5 class="mb-0">Top 5 Items by Spend</h5></div><div class="card-body"><div class="chart-container"><canvas id="itemSpendChart"></canvas></div></div></div></div><div class="col-lg-6"><div class="card h-100"><div class="card-header"><h5 class="mb-0">Top 5 Most Procured Items</h5></div><div class="card-body"><div class="chart-container"><canvas id="itemFrequencyChart"></canvas></div></div></div></div></div><div class="card mt-4"><div class="card-header d-flex justify-content-between"><h6 class="mb-0">Detailed Awarded Contracts Report</h6><button class="btn btn-sm btn-outline-success" onclick="downloadDetailedReport()"><i class="fas fa-download me-2"></i>Download Full Report</button></div><div class="card-body table-responsive"><table class="table table-sm table-hover" id="detailed-report-table"><thead class="table-light"><tr><th>Req ID</th><th>Item Name</th><th>Vendor</th><th>Awarded Amount (₹)</th><th>Award Date</th></tr></thead><tbody id="detailed-report-tbody"></tbody></table></div></div>`,
             'admin-pending-users-view': `<div class="card"><div class="card-header"><h5 class="mb-0">Pending User Approvals</h5></div><div class="card-body table-responsive"><table class="table table-hover align-middle" id="admin-pending-users-table"><thead class="table-light"><tr><th>Name</th><th>Email</th><th>Role</th><th>Company</th><th>Contact</th><th>Action</th></tr></thead><tbody id="admin-pending-users-tbody"></tbody></table></div></div>`,
             'admin-user-control-view': `<div class="card"><div class="card-header d-flex justify-content-between align-items-center"><h5 class="mb-0">User Control Center</h5><button class="btn btn-success btn-sm" onclick="openAddUserModal()"><i class="fas fa-plus me-2"></i>Add User</button></div><div class="card-body table-responsive"><table class="table table-hover align-middle" id="admin-users-table"><thead class="table-light"><tr><th>Name</th><th>Email</th><th>Role</th><th>Company</th><th>Contact</th><th>GSTIN</th><th>Action</th></tr></thead><tbody id="admin-users-tbody"></tbody></table></div></div>`,
-            // ===== FIX: Simplified Vendor Dashboard View =====
             'vendor-dashboard-view': `<div class="row g-4 mb-4">
                 <div class="col-lg-3 col-md-6"><div class="stat-card bg-gradient-info" onclick="navigateTo('vendor-requirements-view')"><div><h5 class="mb-0">Assigned Items</h5><p class="display-4" id="vendor-stats-assigned">--</p></div><i class="fas fa-file-signature stat-icon"></i></div></div>
                 <div class="col-lg-3 col-md-6"><div class="stat-card bg-gradient-primary" onclick="navigateTo('vendor-my-bids-view')"><div><h5 class="mb-0">Bids Submitted</h5><p class="display-4" id="vendor-stats-submitted">--</p></div><i class="fas fa-gavel stat-icon"></i></div></div>
                 <div class="col-lg-3 col-md-6"><div class="stat-card bg-gradient-success" onclick="navigateTo('vendor-awarded-view')"><div><h5 class="mb-0">Contracts Won</h5><p class="display-4" id="vendor-stats-won">--</p></div><i class="fas fa-trophy stat-icon"></i></div></div>
                 <div class="col-lg-3 col-md-6"><div class="stat-card bg-gradient-warning" onclick="navigateTo('vendor-requirements-view')"><div><h5 class="mb-0">Needs My Bid</h5><p class="display-4" id="vendor-stats-needs-bid">--</p></div><i class="fas fa-edit stat-icon"></i></div></div>
+            </div>
+            <div class="row g-4">
+                <div class="col-lg-5"><div class="card h-100"><div class="card-header"><h5 class="mb-0"><i class="fas fa-tachometer-alt me-2"></i>Performance Snapshot</h5></div><div class="card-body"><div class="row g-3" id="vendor-kpi-container"></div></div></div></div>
+                <div class="col-lg-7"><div class="card h-100"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="fas fa-history me-2"></i>My Recent Bids</span><button class="btn btn-sm btn-outline-primary" onclick="navigateTo('vendor-my-bids-view')">View All</button></div><div class="card-body p-0"><div class="list-group list-group-flush" id="vendor-recent-bids"></div></div></div></div>
             </div>`,
             'vendor-requirements-view': `<div class="card"><div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2"><h5 class="mb-0">My Open Requirements for Bidding</h5><button class="btn btn-success btn-sm" onclick="handleBulkBidSubmit()"><i class="fas fa-check-double me-2"></i>Submit All Entered Bids</button></div><div class="card-body p-0"><div class="table-responsive"><table class="table table-hover align-middle mb-0" id="vendor-reqs-table"><thead class="table-light"><tr><th>Item Details</th><th>Delivery Location</th><th>Quantity</th><th>My Bid Status</th><th>My Rank</th></tr></thead><tbody id="vendor-reqs-tbody"></tbody></table></div></div></div>`,
             'vendor-my-bids-view': `<div class="card"><div class="card-header d-flex justify-content-between align-items-center"><h5 class="mb-0">My Bidding History</h5><button class="btn btn-sm btn-success" onclick="downloadMyBidsReport()"><i class="fas fa-download me-2"></i>Download Report</button></div><div class="card-body table-responsive"><table class="table table-hover align-middle" id="vendor-bids-table"><thead class="table-light"><tr><th>Req. ID</th><th>Item Name</th><th>My Bid (₹)</th><th>My Rank</th><th>Status</th><th>Date</th></tr></thead><tbody id="vendor-bids-tbody"></tbody></table></div></div>`,
@@ -237,6 +244,8 @@
             try { registerModal = new bootstrap.Modal('#registerModal'); adminActionModal = new bootstrap.Modal('#adminActionModal'); editUserModal = new bootstrap.Modal('#editUserModal'); reopenBiddingModal = new bootstrap.Modal('#reopenBiddingModal'); bulkUploadModal = new bootstrap.Modal('#bulkUploadModal'); advancedBulkAwardModal = new bootstrap.Modal('#advancedBulkAwardModal'); addUserModal = new bootstrap.Modal('#addUserModal'); forcePasswordResetModal = new bootstrap.Modal('#forcePasswordResetModal'); assignVendorsModal = new bootstrap.Modal('#assignVendorsModal'); bulkBidErrorModal = new bootstrap.Modal('#bulkBidErrorModal'); } catch (e) { console.error("Error initializing modals:", e); }
             const user = sessionStorage.getItem('loggedInUser');
             if (user && sessionStorage.getItem('authToken')) { setupUIForRole(JSON.parse(user)); } else { loginWrapper.removeClass('hidden'); appContainer.addClass('hidden'); }
+            
+            // Event handlers
             $('#login-form').on('submit', handleLogin);
             $('#register-form').on('submit', handleRegistration);
             $(document).on('submit', '#requisition-form', handleRequisitionSubmit);
@@ -247,6 +256,14 @@
             $('#bulk-upload-form').on('submit', handleBulkUpload);
             $('#sidebar-toggle-desktop, #sidebar-toggle-mobile').on('click', () => { if(window.innerWidth < 992) { $('#sidebar').toggleClass('active'); } else { $('#sidebar').toggleClass('collapsed'); $('body').toggleClass('sidebar-collapsed'); } });
             $('#togglePassword').on('click', function() { const passwordInput = $('#password'); const type = passwordInput.attr('type') === 'password' ? 'text' : 'password'; passwordInput.attr('type', type); $(this).toggleClass('fa-eye-slash fa-eye'); });
+
+            // ===== FIX: Added delegated event listener for the "View Bids" button =====
+            $(document).on('click', '.btn-view-bids', function() {
+                const button = $(this);
+                const itemId = button.data('item-id');
+                const itemName = button.data('item-name');
+                openAdminActionModal(itemId, itemName);
+            });
         });
 
         // =========================================================
@@ -261,28 +278,12 @@
                 if (!isFormData) headers['Content-Type'] = 'application/json';
                 const options = { method, headers };
                 if (body) options.body = isFormData ? body : JSON.stringify(body);
-                
                 const finalUrl = endpoint.startsWith('http') ? endpoint : API_BASE_URL + endpoint;
                 const response = await fetch(finalUrl, options);
-                
-                if (response.status === 401 || response.status === 403) {
-                    showToast('Session expired or forbidden. Please log in again.', 'error');
-                    handleLogout();
-                    return { success: false, error: 'Unauthorized' };
-                }
-                
+                if (response.status === 401 || response.status === 403) { showToast('Session expired or forbidden. Please log in again.', 'error'); handleLogout(); return { success: false, error: 'Unauthorized' }; }
                 const resultText = await response.text();
                 let result;
-                try {
-                    result = JSON.parse(resultText);
-                } catch (e) {
-                    console.error("Failed to parse JSON response from API for endpoint:", endpoint);
-                    console.error("Response Text:", resultText);
-                    throw new Error("Received an invalid response from the server. Check console for details.");
-                }
-
-                console.log(`API Response from ${endpoint}:`, result); 
-
+                try { result = JSON.parse(resultText); } catch (e) { console.error("Failed to parse JSON response:", resultText); throw new Error("Received an invalid response from the server."); }
                 if (!response.ok) throw new Error(result.message || `API Error: ${response.statusText}`);
                 return result;
             } catch (error) {
@@ -309,7 +310,6 @@
         // =========================================================
         // ================ VIEW LOADERS ===========================
         // =========================================================
-        // ===== FIX: Simplified Admin Dashboard loader =====
         async function load_admin_dashboard_view() {
             const result = await apiCall('/admin/dashboard-stats');
             if (result.success) {
@@ -318,16 +318,61 @@
                 $('#stats-pending-users').text(data.pendingUsers || '0');
                 $('#stats-pending-reqs').text(data.pendingRequisitionsCount || '0');
                 $('#stats-awarded-contracts').text(data.awardedContracts || '0');
+                
+                const latestReqsList = $('#admin-latest-reqs-list').empty();
+                if (data.latestRequisitions && data.latestRequisitions.length > 0) {
+                    data.latestRequisitions.forEach(req => {
+                        latestReqsList.append(`<div class="list-group-item"><div class="d-flex w-100 justify-content-between"><h6 class="mb-1">REQ-${req.requisition_id}</h6><small>${formatDate(req.created_at)}</small></div><p class="mb-1 small">by ${req.creator_name}</p><small class="text-muted">${req.item_count} items - <span class="badge bg-${getBadgeColor(req.status)}">${req.status}</span></small></div>`);
+                    });
+                } else {
+                    latestReqsList.html('<div class="list-group-item text-center text-muted">No recent requisitions.</div>');
+                }
+
+                const notificationsFeed = $('#admin-notifications-feed').empty();
+                if (data.notifications && data.notifications.length > 0) {
+                     data.notifications.forEach(notif => {
+                        notificationsFeed.append(`<a href="#" onclick="navigateTo('${notif.view}')" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">${notif.text}<i class="fas fa-arrow-right"></i></a>`);
+                    });
+                } else {
+                    notificationsFeed.html('<div class="list-group-item text-center text-muted">No pending actions.</div>');
+                }
+                
+                createChart('adminRequisitionChart', 'bar', { labels: data.charts.reqTrends.labels, datasets: [{ label: 'Requisitions Created', data: data.charts.reqTrends.data, backgroundColor: '#5E72E4' }] }, { responsive: true, maintainAspectRatio: false });
+                createChart('adminVendorBiddingChart', 'doughnut', { labels: data.charts.biddingActivity.labels, datasets: [{ label: 'Bids Submitted', data: data.charts.biddingActivity.data, backgroundColor: ['#5E72E4', '#2DCE89', '#FB6340', '#11CDEF', '#F5365C'] }] }, { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } });
             }
         }
         async function load_admin_pending_reqs_view() { const accordion = $('#pending-reqs-accordion').html('<div class="text-center p-4">Loading...</div>'); const result = await apiCall('/requirements/pending'); if (!result.success || result.data.groupedReqs.length === 0) { accordion.html(`<div class="alert alert-info">No requisitions pending approval.</div>`); return; } const { groupedReqs, pendingItems, allVendors } = result.data; accordion.html(''); groupedReqs.forEach(req => { const reqId = req.requisition_id; const reqItems = pendingItems.filter(item => item.requisition_id == reqId); const itemsHTML = reqItems.map(item => `<li class="list-group-item"><input class="form-check-input me-2 item-check-box" type="checkbox" value="${item.item_id}" checked><label class="form-check-label">${item.item_sl_no}. ${item.item_name} (${item.quantity} ${item.unit})</label></li>`).join(''); const suggestedVendorIds = (req.suggested_vendors || '').split('||').map(v => v.split(':')[0]); const vendorsHTML = allVendors.map(v => `<div class="form-check form-check-inline"><input class="form-check-input vendor-assign-check" type="checkbox" value="${v.user_id}" ${suggestedVendorIds.includes(String(v.user_id)) ? 'checked' : ''}><label class="form-check-label">${v.full_name}</label></div>`).join(''); accordion.append(`<div class="accordion-item"><h2 class="accordion-header"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${reqId}">Req ID: REQ-${reqId || 'N/A'} (By: ${req.creator || 'N/A'}) - ${reqItems.length} items</button></h2><div id="collapse-${reqId}" class="accordion-collapse collapse" data-bs-parent="#pending-reqs-accordion"><div class="accordion-body"><h6>Select items to approve:</h6><ul class="list-group mb-3">${itemsHTML}</ul><h6 class="d-flex justify-content-between"><span>Assign vendors:</span><div class="form-check form-check-inline"><input class="form-check-input me-2" type="checkbox" onchange="toggleAllInParent(this, 'vendor-assign-check')"><label>Select All</label></div></h6><div class="border rounded p-2">${vendorsHTML}</div><button class="btn btn-success mt-3" onclick="handleBulkApproval('${reqId}')">Process Selected Items</button></div></div></div>`); }); }
-        async function load_admin_requirements_view() { const result = await apiCall('/requirements/active'); if(result.success) { $('#admin-req-tbody').html(result.data.map(item => `<tr data-item-id="${item.item_id}"><td><input type="checkbox" class="form-check-input req-item-checkbox"></td><td>REQ-${item.requisition_id || 'N/A'}-${item.item_sl_no || 'N/A'}</td><td>${item.item_name || 'N/A'}<br/><small class="text-muted">${item.item_code || ''} | ${createImageLinks(item)}</small></td><td><small>${item.assigned_vendors || 'N/A'}</small></td><td><span class="badge bg-${getBadgeColor(item.status)}">${item.status || 'N/A'}</span></td><td>${item.l1_vendor || 'No Bids'}</td><td>${item.l1_rate ? formatCurrency(item.l1_rate) : '-'}</td><td><div class="btn-group btn-group-sm"><button class="btn btn-info" onclick="openAdminActionModal(${item.item_id}, '${item.item_name ? item.item_name.replace(/'/g, "\\'") : 'N/A'}')">View Bids</button><button class="btn btn-secondary" onclick="openAssignVendorsModal(${item.requisition_id})">Assign</button></div></td></tr>`).join('') || `<tr><td colspan="8" class="text-center">No active requirements.</td></tr>`); } }
-        async function load_admin_bidding_history_view() { const result = await apiCall('/admin/bidding-history'); if (result.success) { $('#admin-bids-tbody').html(result.data.map(bid => `<tr><td>REQ-${bid.requisition_id || 'N/A'}-${bid.item_sl_no || 'N/A'}</td><td>${bid.item_name || 'N/A'}</td><td>${bid.vendor_name || 'N/A'}</td><td>${formatCurrency(bid.bid_amount)}</td><td><span class="badge bg-${getBadgeColor(bid.bid_status)}">${bid.bid_status || 'N/A'}</span></td><td>${new Date(bid.submitted_at).toLocaleString()}</td></tr>`).join('') || `<tr><td colspan="6" class="text-center">No bidding history found.</td></tr>`); } }
-        async function load_admin_awarded_view() { const result = await apiCall('/admin/awarded-contracts'); if (result.success) { $('#admin-awarded-tbody').html(result.data.map(contract => `<tr><td><input type="checkbox" class="form-check-input awarded-item-checkbox" data-item-id="${contract.item_id}"></td><td>REQ-${contract.requisition_id || 'N/A'}-${contract.item_sl_no || 'N/A'}</td><td>${contract.item_name || 'N/A'}</td><td>${contract.vendor_name || 'N/A'}</td><td>${formatCurrency(contract.ex_works_rate)}</td><td>${formatCurrency(contract.freight_rate)}</td><td><strong>${formatCurrency(contract.awarded_amount)}</strong></td><td>${new Date(contract.awarded_date).toLocaleDateString()}</td><td><div class="btn-group btn-group-sm"><button class="btn btn-info" onclick="openAdminActionModal(${contract.item_id}, '${contract.item_name ? contract.item_name.replace(/'/g, "\\'") : 'N/A'}')">Bids</button><button class="btn btn-danger" onclick="handleSingleReopenBidding(${contract.item_id})">Re-open</button></div></td></tr>`).join('') || `<tr><td colspan="9" class="text-center">No awarded contracts found.</td></tr>`); } }
+        
+        // ===== FIX: Updated to use data-* attributes for View Bids button =====
+        async function load_admin_requirements_view() {
+            const result = await apiCall('/requirements/active');
+            if(result.success) {
+                const tableBody = result.data.map(item => {
+                    const itemNameEscaped = item.item_name ? item.item_name.replace(/"/g, '&quot;') : 'N/A';
+                    return `<tr data-item-id="${item.item_id}">
+                        <td><input type="checkbox" class="form-check-input req-item-checkbox"></td>
+                        <td>REQ-${item.requisition_id || 'N/A'}-${item.item_sl_no || 'N/A'}</td>
+                        <td>${item.item_name || 'N/A'}<br/><small class="text-muted">${item.item_code || ''} | ${createImageLinks(item)}</small></td>
+                        <td><small>${item.assigned_vendors || 'N/A'}</small></td>
+                        <td><span class="badge bg-${getBadgeColor(item.status)}">${item.status || 'N/A'}</span></td>
+                        <td>${item.l1_vendor || 'No Bids'}</td>
+                        <td>${item.l1_rate ? formatCurrency(item.l1_rate) : '-'}</td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-info btn-view-bids" data-item-id="${item.item_id}" data-item-name="${itemNameEscaped}">View Bids</button>
+                                <button class="btn btn-secondary" onclick="openAssignVendorsModal(${item.requisition_id})">Assign</button>
+                            </div>
+                        </td>
+                    </tr>`;
+                }).join('');
+                $('#admin-req-tbody').html(tableBody || `<tr><td colspan="8" class="text-center">No active requirements.</td></tr>`);
+            }
+        }
+        async function load_admin_bidding_history_view() { const result = await apiCall('/admin/bidding-history'); if (result.success) { $('#admin-bids-tbody').html(result.data.map(bid => `<tr><td>REQ-${bid.requisition_id || 'N/A'}-${bid.item_sl_no || 'N/A'}</td><td>${bid.item_name || 'N/A'}</td><td>${bid.vendor_name || 'N/A'}</td><td>${formatCurrency(bid.bid_amount)}</td><td><span class="badge bg-${getBadgeColor(bid.bid_status)}">${bid.bid_status}</span></td><td>${new Date(bid.submitted_at).toLocaleString()}</td></tr>`).join('') || `<tr><td colspan="6" class="text-center">No bidding history found.</td></tr>`); } }
+        async function load_admin_awarded_view() { const result = await apiCall('/admin/awarded-contracts'); if (result.success) { $('#admin-awarded-tbody').html(result.data.map(contract => `<tr><td><input type="checkbox" class="form-check-input awarded-item-checkbox" data-item-id="${contract.item_id}"></td><td>REQ-${contract.requisition_id || 'N/A'}-${contract.item_sl_no || 'N/A'}</td><td>${contract.item_name || 'N/A'}</td><td>${contract.vendor_name || 'N/A'}</td><td>${formatCurrency(contract.ex_works_rate)}</td><td>${formatCurrency(contract.freight_rate)}</td><td><strong>${formatCurrency(contract.awarded_amount)}</strong></td><td>${new Date(contract.awarded_date).toLocaleDateString()}</td><td><div class="btn-group btn-group-sm"><button class="btn btn-info btn-view-bids" data-item-id="${contract.item_id}" data-item-name="${contract.item_name ? contract.item_name.replace(/"/g, '&quot;') : 'N/A'}">Bids</button><button class="btn btn-danger" onclick="handleSingleReopenBidding(${contract.item_id})">Re-open</button></div></td></tr>`).join('') || `<tr><td colspan="9" class="text-center">No awarded contracts found.</td></tr>`); } }
         async function load_admin_pending_users_view() { const result = await apiCall('/users/pending'); if (result.success) { $('#admin-pending-users-tbody').html(result.data.map(user => `<tr><td>${user.full_name || 'N/A'}</td><td>${user.email || 'N/A'}</td><td>${user.role || 'N/A'}</td><td>${user.company_name || '-'}</td><td>${user.contact_number || '-'}</td><td><button class="btn btn-sm btn-success" onclick="approveUser(${user.temp_id})">Approve</button></td></tr>`).join('') || `<tr><td colspan="6" class="text-center">No pending users.</td></tr>`); } }
         async function load_admin_user_control_view() { const result = await apiCall('/users'); if(result.success) { $('#admin-users-tbody').html(result.data.map(user => `<tr><td>${user.full_name || 'N/A'}</td><td>${user.email || 'N/A'}</td><td>${user.role || 'N/A'}</td><td>${user.company_name || '-'}</td><td>${user.contact_number || '-'}</td><td>${user.gstin || '-'}</td><td><button class="btn btn-sm btn-primary" onclick='openEditUserModal(${JSON.stringify(user)})'>Edit</button></td></tr>`).join('') || `<tr><td colspan="7" class="text-center">No users found.</td></tr>`); } }
         async function load_admin_reports_view() { $('#report-apply-filter').off('click').on('click', updateReportView); updateReportView(); }
-        // ===== FIX: Simplified Vendor Dashboard loader =====
         async function load_vendor_dashboard_view() {
             const result = await apiCall('/vendor/dashboard-stats');
             if (result.success) {
@@ -336,6 +381,21 @@
                 $('#vendor-stats-submitted').text(data.submittedBids || '0');
                 $('#vendor-stats-won').text(data.contractsWon || '0');
                 $('#vendor-stats-needs-bid').text(data.needsBid || '0');
+
+                const kpiContainer = $('#vendor-kpi-container').empty();
+                kpiContainer.append(`<div class="col-6"><div class="kpi-card-small"><div class="kpi-icon bg-gradient-primary"><i class="fas fa-tachometer-alt"></i></div><div class="kpi-info"><h6>Win Rate</h6><p>${data.winRate ? `${data.winRate.toFixed(1)}%` : '0%'}</p></div></div></div>`);
+                kpiContainer.append(`<div class="col-6"><div class="kpi-card-small"><div class="kpi-icon bg-gradient-success"><i class="fas fa-handshake"></i></div><div class="kpi-info"><h6>Total Value Won</h6><p>${formatCurrency(data.totalWonValue)}</p></div></div></div>`);
+                kpiContainer.append(`<div class="col-6"><div class="kpi-card-small"><div class="kpi-icon bg-gradient-warning"><i class="fas fa-balance-scale"></i></div><div class="kpi-info"><h6>Avg. Bid Rank</h6><p>${data.avgRank ? parseFloat(data.avgRank).toFixed(1) : 'N/A'}</p></div></div></div>`);
+                kpiContainer.append(`<div class="col-6"><div class="kpi-card-small"><div class="kpi-icon bg-gradient-danger"><i class="fas fa-chart-line"></i></div><div class="kpi-info"><h6>L1 Bid Count</h6><p>${data.l1Bids || '0'}</p></div></div></div>`);
+                
+                const recentBidsList = $('#vendor-recent-bids').empty();
+                if (data.recentBids && data.recentBids.length > 0) {
+                    data.recentBids.forEach(bid => {
+                        recentBidsList.append(`<a href="#" class="list-group-item list-group-item-action"><div class="d-flex w-100 justify-content-between"><h6 class="mb-1 small">${bid.item_name || 'Item Deleted'}</h6><span class="badge bg-${getBadgeColor(bid.bid_status)}">${bid.bid_status || 'N/A'}</span></div><p class="mb-1 small text-muted">My Bid: ${formatCurrency(bid.bid_amount)}</p></a>`);
+                    });
+                } else {
+                    recentBidsList.html('<div class="list-group-item text-center text-muted small">No recent bids.</div>');
+                }
             }
         }
         async function load_vendor_requirements_view() {
@@ -357,17 +417,7 @@
                 const freightClass = !item.freight_required ? 'not-applicable' : '';
                 const attempts = item.bid_attempts || 0;
                 const isDisabled = attempts >= 3;
-
-                const bidRow = `<tr class="bidding-row" data-bid-row-for="${item.item_id}">
-                    <td colspan="5" class="p-3 bg-light">
-                        ${isDisabled ? `<div class="text-center text-danger small"><i class="fas fa-exclamation-circle me-1"></i> You have reached the maximum of 3 bids for this item.</div>` : `
-                        <div class="bid-input-group">
-                            <div><label class="form-label small mb-1">Ex-works Rate/Unit (₹)</label><input type="number" step="0.01" class="form-control form-control-sm ex-works-rate" value="${item.my_ex_works_rate || ''}"></div>
-                            <div><label class="form-label small mb-1">Freight Rate/Unit (₹)</label><input type="number" step="0.01" class="form-control form-control-sm freight-rate ${freightClass}" value="${freightValue}" ${freightReadonly ? 'readonly' : ''}></div>
-                            <div><label class="form-label small mb-1">Comments (Optional)</label><input type="text" class="form-control form-control-sm comments"></div>
-                        </div>`}
-                    </td>
-                </tr>`;
+                const bidRow = `<tr class="bidding-row" data-bid-row-for="${item.item_id}"><td colspan="5" class="p-3 bg-light">${isDisabled ? `<div class="text-center text-danger small"><i class="fas fa-exclamation-circle me-1"></i> You have reached the maximum of 3 bids for this item.</div>` : `<div class="bid-input-group"><div><label class="form-label small mb-1">Ex-works Rate/Unit (₹)</label><input type="number" step="0.01" class="form-control form-control-sm ex-works-rate" value="${item.my_ex_works_rate || ''}"></div><div><label class="form-label small mb-1">Freight Rate/Unit (₹)</label><input type="number" step="0.01" class="form-control form-control-sm freight-rate ${freightClass}" value="${freightValue}" ${freightReadonly ? 'readonly' : ''}></div><div><label class="form-label small mb-1">Comments (Optional)</label><input type="text" class="form-control form-control-sm comments"></div></div>`}</td></tr>`;
                 tbody.append(itemRow + bidRow);
             });
         }
@@ -398,26 +448,18 @@
         // =========================================================
         // ================ ACTION HANDLERS ========================
         // =========================================================
-        // ===== FIX: Updated Bulk Bid Logic to submit only changed bids =====
         async function handleBulkBidSubmit() {
             const bidsToSubmit = [];
-            
             $('#vendor-reqs-tbody .bidding-row').each(function() {
                 const bidRow = $(this);
                 const itemRow = bidRow.prev('tr');
                 const item = JSON.parse(itemRow.attr('data-item'));
                 const exWorksRateInput = bidRow.find('.ex-works-rate');
-                
                 if (exWorksRateInput.length === 0 || (item.bid_attempts || 0) >= 3) return;
-
                 const newExWorks = exWorksRateInput.val();
                 const newFreight = bidRow.find('.freight-rate').val();
-                
-                // Handle null/undefined original values by converting to string for comparison
                 const originalExWorks = item.my_ex_works_rate != null ? String(item.my_ex_works_rate) : '';
                 const originalFreight = item.my_freight_rate != null ? String(item.my_freight_rate) : '';
-                
-                // Check if a new ex-works rate is entered AND if it's different from the original bid
                 if (newExWorks && (newExWorks !== originalExWorks || newFreight !== originalFreight)) {
                     bidsToSubmit.push({
                         itemId: item.item_id,
@@ -427,18 +469,11 @@
                     });
                 }
             });
-
-            if (bidsToSubmit.length === 0) {
-                return showToast('No new or updated bids were entered.', 'warning');
-            }
-
+            if (bidsToSubmit.length === 0) { return showToast('No new or updated bids were entered.', 'warning'); }
             const result = await apiCall('/bids/bulk', 'POST', { bids: bidsToSubmit });
             if (result.success) {
                 showToast(result.message, 'success');
-                if (result.message.includes('skipped')) {
-                        $('#bulk-bid-error-list').html(`<li>${result.message}</li>`);
-                        bulkBidErrorModal.show();
-                }
+                if (result.message.includes('skipped')) { $('#bulk-bid-error-list').html(`<li>${result.message}</li>`); bulkBidErrorModal.show(); }
                 load_vendor_requirements_view();
             }
         }
