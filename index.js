@@ -7,7 +7,7 @@ const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const path = require('path');
 const xlsx = require('xlsx');
-const fs = require('fs');
+const fs = require = require('fs');
 const sgMail = require('@sendgrid/mail');
 const { v2: cloudinary } = require('cloudinary');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
@@ -34,7 +34,6 @@ app.get('/', (req, res) => {
 });
 
 // ================== DATABASE POOL ==================
-// --- Vercel Compatibility Fix for SSL Certificate ---
 const dbConfig = {
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
@@ -54,6 +53,14 @@ if (process.env.DB_CA_CERT_CONTENT) {
     };
 } else if (process.env.NODE_ENV === 'production' && !process.env.DB_CA_CERT_CONTENT) {
     console.warn("WARNING: DB_CA_CERT_CONTENT is not set. SSL connection might fail.");
+} else {
+    try {
+        dbConfig.ssl = {
+            ca: fs.readFileSync(path.join(__dirname, 'ca.pem'))
+        };
+    } catch (e) {
+        console.warn("ca.pem not found. Proceeding without SSL certificate.");
+    }
 }
 
 const dbPool = mysql.createPool(dbConfig);
@@ -251,8 +258,8 @@ app.get('/api/requirements/assigned', authenticateToken, async (req, res, next) 
             item.my_bid_amount = (parseFloat(item.my_ex_works_rate || 0) + parseFloat(item.my_freight_rate || 0)) * parseFloat(item.quantity);
             if (item.my_bid_amount > 0) {
                 const [rankResult] = await dbPool.query(
-                    `SELECT COUNT(DISTINCT vendor_id) + 1 as \`rank\` FROM bids WHERE item_id IN (${item.original_item_ids}) AND bid_amount < ?`,
-                    [item.my_bid_amount]
+                    `SELECT COUNT(DISTINCT vendor_id) + 1 as \`rank\` FROM bids WHERE item_id IN (?) AND bid_amount < ?`,
+                    [item.original_item_ids.split(','), item.my_bid_amount]
                 );
                 item.my_rank = rankResult[0].rank;
             } else {
@@ -275,27 +282,24 @@ app.post('/api/bids', authenticateToken, async (req, res, next) => {
         const { bids } = req.body;
         
         await connection.beginTransaction();
-        
+        const invalidBids = [];
+
         for (const bid of bids) {
             const originalItemIds = bid.original_item_ids.split(',');
-            
-            // Check bid limit
             const [[countResult]] = await connection.query('SELECT COUNT(*) as count FROM bidding_history_log WHERE item_id = ? AND vendor_id = ?', [originalItemIds[0], req.user.userId]);
             
             if (countResult.count >= 3) {
-                // If limit reached, skip this item and return a specific message later
-                console.warn(`Vendor ${req.user.userId} has reached max bids for item ${bid.item_name}. Skipping.`);
+                invalidBids.push(bid.item_name);
                 continue;
             }
             
-            // Delete previous bids for this item to keep only the latest in 'bids' table for live ranking
-            await connection.query('DELETE FROM bids WHERE item_id IN (?) AND vendor_id = ?', [originalItemIds, req.user.userId]);
-            
-            // Insert new bid for each original item ID
             for (const itemId of originalItemIds) {
                 const [[itemDetails]] = await connection.query('SELECT quantity FROM requisition_items WHERE item_id = ?', [itemId]);
                 const totalBidAmount = (parseFloat(bid.ex_works_rate) + parseFloat(bid.freight_rate)) * parseFloat(itemDetails.quantity);
-
+                
+                // Delete previous bids for this item to keep only the latest in 'bids' table for live ranking
+                await connection.query('DELETE FROM bids WHERE item_id = ? AND vendor_id = ?', [itemId, req.user.userId]);
+                
                 const [result] = await connection.query("INSERT INTO bids (item_id, vendor_id, bid_amount, ex_works_rate, freight_rate, comments, bid_status) VALUES (?, ?, ?, ?, ?, ?, ?)",
                     [itemId, req.user.userId, totalBidAmount, bid.ex_works_rate, bid.freight_rate, bid.comments, 'Submitted']);
                 
@@ -306,7 +310,12 @@ app.post('/api/bids', authenticateToken, async (req, res, next) => {
         }
         
         await connection.commit();
-        res.json({ success: true, message: 'Bids submitted successfully!' });
+        
+        if (invalidBids.length > 0) {
+            res.status(200).json({ success: true, message: `Some bids were skipped. You have reached the max bids for: ${invalidBids.join(', ')}. Other bids were submitted successfully.` });
+        } else {
+            res.json({ success: true, message: 'Bids submitted successfully!' });
+        }
     } catch (error) {
         if(connection) await connection.rollback();
         next(error);
@@ -387,15 +396,23 @@ app.get('/api/vendor/my-bids', authenticateToken, async (req, res, next) => {
     try {
         const query = `
             SELECT 
-                b.*, 
+                MAX(b.bid_id) as bid_id,
+                MAX(b.bid_amount) as bid_amount,
+                MAX(b.ex_works_rate) as ex_works_rate,
+                MAX(b.freight_rate) as freight_rate,
+                MAX(b.comments) as comments,
+                MAX(b.bid_status) as bid_status,
+                MAX(b.submitted_at) as submitted_at,
                 ri.item_name, 
                 ri.requisition_id, 
                 ri.item_sl_no,
-                (SELECT COUNT(DISTINCT b2.vendor_id) FROM bids b2 WHERE b2.item_id = b.item_id AND b2.bid_amount < b.bid_amount) + 1 AS \`rank\`
+                (SELECT COUNT(DISTINCT b2.vendor_id) FROM bids b2 WHERE b2.item_id = ri.item_id AND b2.bid_amount < MAX(b.bid_amount)) + 1 AS \`rank\`
             FROM bids b
             JOIN requisition_items ri ON b.item_id = ri.item_id
             WHERE b.vendor_id = ?
-            ORDER BY b.submitted_at DESC`;
+            GROUP BY ri.item_id
+            ORDER BY MAX(b.submitted_at) DESC;
+        `;
         const [bids] = await dbPool.query(query, [req.user.userId]);
         res.json({ success: true, data: bids });
     } catch (error) {
