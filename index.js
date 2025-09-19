@@ -167,9 +167,7 @@ app.get('/api/requisitions/my-status', authenticateToken, async (req, res, next)
         const [items] = await dbPool.query(`SELECT ri.*, ac.awarded_amount, u.full_name as awarded_vendor FROM requisition_items ri LEFT JOIN awarded_contracts ac ON ri.item_id = ac.item_id LEFT JOIN users u ON ac.vendor_id = u.user_id WHERE ri.requisition_id IN (?) ORDER BY ri.item_sl_no ASC`, [reqIds]);
         const finalData = myReqs.map(req => ({ ...req, items: items.filter(item => item.requisition_id === req.requisition_id) }));
         res.json({ success: true, data: finalData });
-    } catch (error) {
-        next(error);
-    }
+    } catch (error) { next(error); }
 });
 
 // --- 3. VENDOR FEATURES ---
@@ -193,9 +191,7 @@ app.get('/api/requirements/assigned', authenticateToken, async (req, res, next) 
         `;
         const [items] = await dbPool.query(query, [vendorId, vendorId, vendorId]);
         res.json({ success: true, data: items });
-    } catch (error) {
-        next(error);
-    }
+    } catch (error) { next(error); }
 });
 
 app.post('/api/bids/bulk', authenticateToken, async (req, res, next) => {
@@ -207,25 +203,18 @@ app.post('/api/bids/bulk', authenticateToken, async (req, res, next) => {
         if (!bids || bids.length === 0) return res.status(400).json({ success: false, message: 'No bids to submit.' });
 
         await connection.beginTransaction();
-        const submittedBids = [];
+        let submittedCount = 0;
         const skippedBids = [];
 
         for (const bid of bids) {
             const { itemId, ex_works_rate, freight_rate, comments } = bid;
             const vendorId = req.user.userId;
 
-            const [[latestBid]] = await connection.query('SELECT ex_works_rate, freight_rate FROM bidding_history_log WHERE item_id = ? AND vendor_id = ? ORDER BY submitted_at DESC LIMIT 1', [itemId, vendorId]);
-
-            // Skip if the rate is unchanged
-            if (latestBid && parseFloat(latestBid.ex_works_rate) === parseFloat(ex_works_rate) && parseFloat(latestBid.freight_rate) === parseFloat(freight_rate || 0)) {
-                continue;
-            }
-
             const [[countResult]] = await connection.query('SELECT COUNT(*) as count FROM bidding_history_log WHERE item_id = ? AND vendor_id = ?', [itemId, vendorId]);
 
             if (countResult.count >= 3) {
                 const [[itemDetails]] = await connection.query('SELECT item_name FROM requisition_items WHERE item_id = ?', [itemId]);
-                skippedBids.push(itemDetails.item_name || `Item ID ${itemId}`);
+                skippedBids.push(itemDetails ? itemDetails.item_name : `Item ID ${itemId}`);
                 continue;
             }
 
@@ -241,12 +230,12 @@ app.post('/api/bids/bulk', authenticateToken, async (req, res, next) => {
             const [result] = await connection.query("INSERT INTO bids (item_id, vendor_id, bid_amount, ex_works_rate, freight_rate, comments, bid_status, submitted_at) VALUES (?, ?, ?, ?, ?, ?, 'Submitted', NOW())", [itemId, vendorId, totalBidAmount, ex_works_rate, freight_rate || 0, comments]);
             await connection.query("INSERT INTO bidding_history_log (bid_id, item_id, vendor_id, bid_amount, ex_works_rate, freight_rate, bid_status, submitted_at) VALUES (?, ?, ?, ?, ?, ?, 'Submitted', NOW())", [result.insertId, itemId, vendorId, totalBidAmount, ex_works_rate, freight_rate || 0]);
             
-            submittedBids.push(itemDetails.item_name);
+            submittedCount++;
         }
 
         await connection.commit();
         
-        let message = `${submittedBids.length} bid(s) submitted successfully.`;
+        let message = `${submittedCount} bid(s) submitted successfully.`;
         if (skippedBids.length > 0) {
             message += ` The following items were skipped (bid limit reached): ${skippedBids.join(', ')}.`;
         }
@@ -302,7 +291,7 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
             contractsWon: "SELECT COUNT(*) as count, SUM(awarded_amount) as totalValue FROM awarded_contracts WHERE vendor_id = ?",
             needsBid: "SELECT COUNT(*) as count FROM requisition_items ri JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id WHERE ra.vendor_id = ? AND ri.status = 'Active' AND ri.item_id NOT IN (SELECT item_id FROM bids WHERE vendor_id = ?)",
             l1Bids: "SELECT COUNT(*) as count FROM (SELECT item_id FROM bids WHERE vendor_id = ? AND bid_amount = (SELECT MIN(bid_amount) FROM bids b2 WHERE b2.item_id = bids.item_id) GROUP BY item_id) as l1_bids",
-            recentBids: `SELECT bhl.bid_amount, bhl.bid_status, ri.item_name FROM bidding_history_log bhl JOIN requisition_items ri ON bhl.item_id = ri.item_id WHERE bhl.vendor_id = ? ORDER BY bhl.submitted_at DESC LIMIT 5`,
+            recentBids: `SELECT bhl.bid_amount, bhl.bid_status, ri.item_name FROM bidding_history_log bhl LEFT JOIN requisition_items ri ON bhl.item_id = ri.item_id WHERE bhl.vendor_id = ? ORDER BY bhl.submitted_at DESC LIMIT 5`,
             avgRank: `SELECT AVG(t.rank) as avg_rank FROM (SELECT (SELECT COUNT(DISTINCT b2.vendor_id) + 1 FROM bids b2 WHERE b2.item_id = b.item_id AND b2.bid_amount < b.bid_amount) as \`rank\` FROM bids b WHERE b.vendor_id = ?) as t`
         };
         const [
@@ -500,7 +489,7 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
             dateFilter = ' WHERE ac.awarded_date BETWEEN ? AND ?';
             params.push(startDate, `${endDate} 23:59:59`);
         }
-
+        
         const [kpisResult, detailedReport, vendorSpend, awardedValue, itemSpend, itemFrequency] = await Promise.all([
             dbPool.query(`
                 SELECT
@@ -519,11 +508,11 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
             dbPool.query(`SELECT ri.item_name, SUM(ac.awarded_amount) as total_spend FROM awarded_contracts ac JOIN requisition_items ri ON ac.item_id = ri.item_id ${dateFilter} GROUP BY ri.item_name ORDER BY total_spend DESC LIMIT 5`, params),
             dbPool.query(`SELECT item_name, COUNT(*) as frequency FROM awarded_contracts ${dateFilter} GROUP BY item_name ORDER BY frequency DESC LIMIT 5`, params)
         ]);
-
+        
         const kpis = kpisResult[0][0];
         const totalAwarded = kpis.awardedItemsCount;
         const l1AwardRate = totalAwarded > 0 ? (kpis.l1AwardsCount / totalAwarded) * 100 : 0;
-
+        
         res.json({
             success: true,
             data: {
@@ -651,16 +640,98 @@ app.put('/api/requisitions/:id/assignments', authenticateToken, isAdmin, async (
 });
 
 // --- USER MANAGEMENT & UTILITIES ---
-app.get('/api/users/pending', authenticateToken, isAdmin, async (req, res, next) => { try { const [rows] = await dbPool.query(`SELECT * FROM pending_users ORDER BY temp_id DESC`); res.json({ success: true, data: rows }); } catch (error) { next(error); }});
-app.post('/api/users/approve', authenticateToken, isAdmin, async (req, res, next) => { try { const { temp_id } = req.body; const [[pendingUser]] = await dbPool.query('SELECT * FROM pending_users WHERE temp_id = ?', [temp_id]); if (!pendingUser) return res.status(404).json({ success: false, message: 'User not found' }); await dbPool.query('INSERT INTO users (full_name, email, password_hash, role, company_name, contact_number, gstin) VALUES (?, ?, ?, ?, ?, ?, ?)', [pendingUser.full_name, pendingUser.email, pendingUser.password, pendingUser.role, pendingUser.company_name, pendingUser.contact_number, pendingUser.gstin]); await dbPool.query('DELETE FROM pending_users WHERE temp_id = ?', [temp_id]); res.json({ success: true, message: 'User approved!' }); } catch (error) { next(error); }});
-app.get('/api/users', authenticateToken, async (req, res, next) => { try { const [rows] = await dbPool.query(`SELECT user_id, full_name, email, role, company_name, contact_number, gstin, is_active FROM users ORDER BY full_name`); res.json({ success: true, data: rows }); } catch (error) { next(error); }});
-app.get('/api/users/vendors', authenticateToken, async (req, res, next) => { try { const [vendors] = await dbPool.query("SELECT user_id, full_name FROM users WHERE role = 'Vendor' AND is_active = 1"); res.json({ success: true, data: vendors }); } catch (error) { next(error); }});
-app.get('/api/users/admins', authenticateToken, async (req, res, next) => { try { const [admins] = await dbPool.query("SELECT email FROM users WHERE role = 'Admin' AND is_active = 1"); res.json({ success: true, data: admins.map(a => a.email) }); } catch (error) { next(error); }});
-app.put('/api/users/:id', authenticateToken, isAdmin, async (req, res, next) => { try { const { id } = req.params; const { full_name, email, role, company_name, contact_number, gstin, password } = req.body; let query = 'UPDATE users SET full_name=?, email=?, role=?, company_name=?, contact_number=?, gstin=?'; let params = [full_name, email, role, company_name, contact_number, gstin]; if (password) { const hashedPassword = await bcrypt.hash(password, 10); query += ', password_hash=?, force_password_reset=?'; params.push(hashedPassword, true); } query += ' WHERE user_id=?'; params.push(id); await dbPool.query(query, params); res.json({ success: true, message: 'User updated successfully.' }); } catch (error) { next(error); }});
-app.post('/api/users/add', authenticateToken, isAdmin, async (req, res, next) => { try { const { full_name, email, password, role, company_name, contact_number, gstin } = req.body; if (!full_name || !email || !password || !role) { return res.status(400).json({ success: false, message: 'Name, email, password, and role are required.'}); } const hashedPassword = await bcrypt.hash(password, 10); await dbPool.query( 'INSERT INTO users (full_name, email, password_hash, role, company_name, contact_number, gstin, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [full_name, email, hashedPassword, role, company_name, contact_number, gstin, 1] ); res.status(201).json({ success: true, message: 'User created successfully.' }); } catch (error) { if (error.code === 'ER_DUP_ENTRY') return res.status(400).json({ success: false, message: 'This email is already registered.' }); next(error); }});
-app.post('/api/users/set-password', authenticateToken, async (req, res, next) => { try { const { newPassword } = req.body; if (!newPassword || newPassword.length < 4) { return res.status(400).json({ success: false, message: 'Password is too short.' }); } const hashedPassword = await bcrypt.hash(newPassword, 10); await dbPool.query( 'UPDATE users SET password_hash = ?, force_password_reset = ? WHERE user_id = ?', [hashedPassword, false, req.user.userId] ); res.json({ success: true, message: 'Password updated successfully.' }); } catch(error) { next(error); }});
+app.get('/api/users/pending', authenticateToken, isAdmin, async (req, res, next) => {
+    try {
+        const [rows] = await dbPool.query(`SELECT * FROM pending_users ORDER BY temp_id DESC`);
+        res.json({ success: true, data: rows });
+    } catch (error) {
+        next(error);
+    }
+});
+app.post('/api/users/approve', authenticateToken, isAdmin, async (req, res, next) => {
+    try {
+        const { temp_id } = req.body;
+        const [[pendingUser]] = await dbPool.query('SELECT * FROM pending_users WHERE temp_id = ?', [temp_id]);
+        if (!pendingUser) return res.status(404).json({ success: false, message: 'User not found' });
+        await dbPool.query('INSERT INTO users (full_name, email, password_hash, role, company_name, contact_number, gstin) VALUES (?, ?, ?, ?, ?, ?, ?)', [pendingUser.full_name, pendingUser.email, pendingUser.password, pendingUser.role, pendingUser.company_name, pendingUser.contact_number, pendingUser.gstin]);
+        await dbPool.query('DELETE FROM pending_users WHERE temp_id = ?', [temp_id]);
+        res.json({ success: true, message: 'User approved!' });
+    } catch (error) {
+        next(error);
+    }
+});
+app.get('/api/users', authenticateToken, async (req, res, next) => {
+    try {
+        const [rows] = await dbPool.query(`SELECT user_id, full_name, email, role, company_name, contact_number, gstin, is_active FROM users ORDER BY full_name`);
+        res.json({ success: true, data: rows });
+    } catch (error) {
+        next(error);
+    }
+});
+app.get('/api/users/vendors', authenticateToken, async (req, res, next) => {
+    try {
+        const [vendors] = await dbPool.query("SELECT user_id, full_name FROM users WHERE role = 'Vendor' AND is_active = 1");
+        res.json({ success: true, data: vendors });
+    } catch (error) {
+        next(error);
+    }
+});
+app.get('/api/users/admins', authenticateToken, async (req, res, next) => {
+    try {
+        const [admins] = await dbPool.query("SELECT email FROM users WHERE role = 'Admin' AND is_active = 1");
+        res.json({ success: true, data: admins.map(a => a.email) });
+    } catch (error) {
+        next(error);
+    }
+});
+app.put('/api/users/:id', authenticateToken, isAdmin, async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { full_name, email, role, company_name, contact_number, gstin, password } = req.body;
+        let query = 'UPDATE users SET full_name=?, email=?, role=?, company_name=?, contact_number=?, gstin=?';
+        let params = [full_name, email, role, company_name, contact_number, gstin];
+        if (password) {
+            const hashedPassword = await bcrypt.hash(password, 10);
+            query += ', password_hash=?, force_password_reset=?';
+            params.push(hashedPassword, true);
+        }
+        query += ' WHERE user_id=?';
+        params.push(id);
+        await dbPool.query(query, params);
+        res.json({ success: true, message: 'User updated successfully.' });
+    } catch (error) {
+        next(error);
+    }
+});
+app.post('/api/users/add', authenticateToken, isAdmin, async (req, res, next) => {
+    try {
+        const { full_name, email, password, role, company_name, contact_number, gstin } = req.body;
+        if (!full_name || !email || !password || !role) {
+            return res.status(400).json({ success: false, message: 'Name, email, password, and role are required.' });
+        }
+        const hashedPassword = await bcrypt.hash(password, 10);
+        await dbPool.query('INSERT INTO users (full_name, email, password_hash, role, company_name, contact_number, gstin, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [full_name, email, hashedPassword, role, company_name, contact_number, gstin, 1]);
+        res.status(201).json({ success: true, message: 'User created successfully.' });
+    } catch (error) {
+        if (error.code === 'ER_DUP_ENTRY') return res.status(400).json({ success: false, message: 'This email is already registered.' });
+        next(error);
+    }
+});
+app.post('/api/users/set-password', authenticateToken, async (req, res, next) => {
+    try {
+        const { newPassword } = req.body;
+        if (!newPassword || newPassword.length < 4) {
+            return res.status(400).json({ success: false, message: 'Password is too short.' });
+        }
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        await dbPool.query('UPDATE users SET password_hash = ?, force_password_reset = ? WHERE user_id = ?', [hashedPassword, false, req.user.userId]);
+        res.json({ success: true, message: 'Password updated successfully.' });
+    } catch (error) {
+        next(error);
+    }
+});
 
-// --- MESSAGING & NOTIFICATIONS API ---
+// --- 6. MESSAGING & NOTIFICATIONS API ---
 app.post('/api/messages', authenticateToken, async (req, res, next) => {
     try {
         const { recipientId, messageBody } = req.body;
@@ -670,6 +741,7 @@ app.post('/api/messages', authenticateToken, async (req, res, next) => {
         next(error);
     }
 });
+
 app.get('/api/conversations/list', authenticateToken, async (req, res, next) => {
     try {
         const myId = req.user.userId;
@@ -695,18 +767,8 @@ app.get('/api/conversations/list', authenticateToken, async (req, res, next) => 
             const [lastMessages] = await dbPool.query(lastMessagesQuery, [myId, myId, otherUserIds, myId, otherUserIds]);
             const unreadQuery = `SELECT sender_id, COUNT(*) as count FROM messages WHERE recipient_id = ? AND is_read = 0 GROUP BY sender_id`;
             const [unreadCounts] = await dbPool.query(unreadQuery, [myId]);
-            lastMessages.forEach(msg => {
-                if (userMap.has(msg.other_user_id)) {
-                    const user = userMap.get(msg.other_user_id);
-                    user.lastMessage = msg.message_body;
-                    user.lastMessageTimestamp = msg.timestamp;
-                }
-            });
-            unreadCounts.forEach(uc => {
-                if (userMap.has(uc.sender_id)) {
-                    userMap.get(uc.sender_id).unreadCount = uc.count;
-                }
-            });
+            lastMessages.forEach(msg => { if (userMap.has(msg.other_user_id)) { const user = userMap.get(msg.other_user_id); user.lastMessage = msg.message_body; user.lastMessageTimestamp = msg.timestamp; }});
+            unreadCounts.forEach(uc => { if (userMap.has(uc.sender_id)) { userMap.get(uc.sender_id).unreadCount = uc.count; }});
         }
         const sortedUsers = Array.from(userMap.values()).sort((a, b) => (new Date(b.lastMessageTimestamp) || 0) - (new Date(a.lastMessageTimestamp) || 0));
         res.json({ success: true, data: sortedUsers });
@@ -714,27 +776,95 @@ app.get('/api/conversations/list', authenticateToken, async (req, res, next) => 
         next(error);
     }
 });
-app.get('/api/messages/:otherUserId', authenticateToken, async (req, res, next) => { let connection; try { connection = await dbPool.getConnection(); const { otherUserId } = req.params; const myId = req.user.userId; await connection.beginTransaction(); const [messages] = await connection.query(`SELECT * FROM messages WHERE (sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?) ORDER BY timestamp ASC`, [myId, otherUserId, otherUserId, myId] ); await connection.query( `UPDATE messages SET is_read = 1 WHERE recipient_id = ? AND sender_id = ? AND is_read = 0`, [myId, otherUserId] ); await connection.commit(); res.json({ success: true, data: messages }); } catch(error) { if(connection) await connection.rollback(); next(error); } finally { if(connection) connection.release(); }});
-app.post('/api/notifications/mark-all-read', authenticateToken, async (req, res, next) => { try { await dbPool.query("UPDATE messages SET is_read = 1 WHERE recipient_id = ?", [req.user.userId]); res.json({ success: true, message: 'All notifications marked as read.' }); } catch (error) { next(error); }});
-app.get('/api/notifications', authenticateToken, async (req, res, next) => { try { const { userId, role } = req.user; let notifications = []; const [[msgCount]] = await dbPool.query("SELECT COUNT(*) as count FROM messages WHERE recipient_id = ? AND is_read = 0", [userId]); if (msgCount.count > 0) { notifications.push({ text: `You have ${msgCount.count} new message(s).`, view: 'messaging-view' }); } if (role === 'Admin') { const [[pendingUsers]] = await dbPool.query("SELECT COUNT(*) as count FROM pending_users"); if (pendingUsers.count > 0) { notifications.push({ text: `${pendingUsers.count} new user(s) awaiting approval.`, view: 'admin-pending-users-view' }); } const [[pendingReqs]] = await dbPool.query("SELECT COUNT(DISTINCT requisition_id) as count FROM requisitions WHERE status = 'Pending Approval'"); if (pendingReqs.count > 0) { notifications.push({ text: `${pendingReqs.count} new requisition(s) to approve.`, view: 'admin-pending-reqs-view' }); } } else if (role === 'Vendor') { const [[newItems]] = await dbPool.query("SELECT COUNT(DISTINCT ri.item_id) as count FROM requisition_items ri JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id WHERE ra.vendor_id = ? AND ri.status = 'Active' AND ra.assigned_at > DATE_SUB(NOW(), INTERVAL 1 DAY)", [userId]); if (newItems.count > 0) { notifications.push({ text: `${newItems.count} new item(s) assigned for bidding.`, view: 'vendor-requirements-view' }); } } else { const [[processedItems]] = await dbPool.query("SELECT COUNT(*) as count FROM requisitions WHERE created_by = ? AND status = 'Processed' AND approved_at > DATE_SUB(NOW(), INTERVAL 1 DAY)", [userId]); if(processedItems.count > 0) { notifications.push({ text: `${processedItems.count} of your requisitions have been processed.`, view: 'user-status-view' }); } } res.json({ success: true, data: notifications }); } catch (error) { next(error); }});
-app.get('/api/sidebar-counts', authenticateToken, async (req, res, next) => { try { const { userId, role } = req.user; let counts = { unreadMessages: 0, pendingReqs: 0, pendingUsers: 0 }; const [[msgCount]] = await dbPool.query("SELECT COUNT(*) as count FROM messages WHERE recipient_id = ? AND is_read = 0", [userId]); counts.unreadMessages = msgCount.count; if (role === 'Admin') { const [[pendingUsers]] = await dbPool.query("SELECT COUNT(*) as count FROM pending_users"); counts.pendingUsers = pendingUsers.count; const [[pendingReqs]] = await dbPool.query("SELECT COUNT(DISTINCT requisition_id) as count FROM requisitions WHERE status = 'Pending Approval'"); counts.pendingReqs = pendingReqs.count; } res.json({ success: true, data: counts }); } catch (error) { next(error); }});
+
+app.get('/api/messages/:otherUserId', authenticateToken, async (req, res, next) => {
+    let connection;
+    try {
+        connection = await dbPool.getConnection();
+        const { otherUserId } = req.params;
+        const myId = req.user.userId;
+        await connection.beginTransaction();
+        const [messages] = await connection.query(`SELECT * FROM messages WHERE (sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?) ORDER BY timestamp ASC`, [myId, otherUserId, otherUserId, myId]);
+        await connection.query(`UPDATE messages SET is_read = 1 WHERE recipient_id = ? AND sender_id = ? AND is_read = 0`, [myId, otherUserId]);
+        await connection.commit();
+        res.json({ success: true, data: messages });
+    } catch (error) {
+        if (connection) await connection.rollback();
+        next(error);
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+app.post('/api/notifications/mark-all-read', authenticateToken, async (req, res, next) => {
+    try {
+        await dbPool.query("UPDATE messages SET is_read = 1 WHERE recipient_id = ?", [req.user.userId]);
+        res.json({ success: true, message: 'All notifications marked as read.' });
+    } catch (error) {
+        next(error);
+    }
+});
+
+app.get('/api/notifications', authenticateToken, async (req, res, next) => {
+    try {
+        const { userId, role } = req.user;
+        let notifications = [];
+        const [[msgCount]] = await dbPool.query("SELECT COUNT(*) as count FROM messages WHERE recipient_id = ? AND is_read = 0", [userId]);
+        if (msgCount.count > 0) {
+            notifications.push({ text: `You have ${msgCount.count} new message(s).`, view: 'messaging-view' });
+        }
+        if (role === 'Admin') {
+            const [[pendingUsers]] = await dbPool.query("SELECT COUNT(*) as count FROM pending_users");
+            if (pendingUsers.count > 0) {
+                notifications.push({ text: `${pendingUsers.count} new user(s) awaiting approval.`, view: 'admin-pending-users-view' });
+            }
+            const [[pendingReqs]] = await dbPool.query("SELECT COUNT(DISTINCT requisition_id) as count FROM requisitions WHERE status = 'Pending Approval'");
+            if (pendingReqs.count > 0) {
+                notifications.push({ text: `${pendingReqs.count} new requisition(s) to approve.`, view: 'admin-pending-reqs-view' });
+            }
+        } else if (role === 'Vendor') {
+            const [[newItems]] = await dbPool.query("SELECT COUNT(DISTINCT ri.item_id) as count FROM requisition_items ri JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id WHERE ra.vendor_id = ? AND ri.status = 'Active' AND ra.assigned_at > DATE_SUB(NOW(), INTERVAL 1 DAY)", [userId]);
+            if (newItems.count > 0) {
+                notifications.push({ text: `${newItems.count} new item(s) assigned for bidding.`, view: 'vendor-requirements-view' });
+            }
+        } else {
+            const [[processedItems]] = await dbPool.query("SELECT COUNT(*) as count FROM requisitions WHERE created_by = ? AND status = 'Processed' AND approved_at > DATE_SUB(NOW(), INTERVAL 1 DAY)", [userId]);
+            if (processedItems.count > 0) {
+                notifications.push({ text: `${processedItems.count} of your requisitions have been processed.`, view: 'user-status-view' });
+            }
+        }
+        res.json({ success: true, data: notifications });
+    } catch (error) {
+        next(error);
+    }
+});
+
+app.get('/api/sidebar-counts', authenticateToken, async (req, res, next) => {
+    try {
+        const { userId, role } = req.user;
+        let counts = { unreadMessages: 0, pendingReqs: 0, pendingUsers: 0 };
+        const [[msgCount]] = await dbPool.query("SELECT COUNT(*) as count FROM messages WHERE recipient_id = ? AND is_read = 0", [userId]);
+        counts.unreadMessages = msgCount.count;
+        if (role === 'Admin') {
+            const [[pendingUsers]] = await dbPool.query("SELECT COUNT(*) as count FROM pending_users");
+            counts.pendingUsers = pendingUsers.count;
+            const [[pendingReqs]] = await dbPool.query("SELECT COUNT(DISTINCT requisition_id) as count FROM requisitions WHERE status = 'Pending Approval'");
+            counts.pendingReqs = pendingReqs.count;
+        }
+        res.json({ success: true, data: counts });
+    } catch (error) {
+        next(error);
+    }
+});
 
 // --- 7. MISC & EMAIL ---
 app.post('/api/send-email', authenticateToken, async (req, res, next) => {
     if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_API_KEY.startsWith('SG.')) {
         console.error("SENDGRID_API_KEY is not configured.");
-        return res.status(500).json({
-            success: false,
-            message: 'Email service is not configured.'
-        });
+        return res.status(500).json({ success: false, message: 'Email service is not configured.' });
     }
     const { recipient, subject, htmlBody, cc } = req.body;
-    const msg = {
-        to: recipient,
-        from: process.env.FROM_EMAIL,
-        subject,
-        html: htmlBody
-    };
+    const msg = { to: recipient, from: process.env.FROM_EMAIL, subject, html: htmlBody };
     if (cc && cc.length > 0) msg.cc = cc;
     try {
         await sgMail.send(msg);
