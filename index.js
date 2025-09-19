@@ -7,7 +7,7 @@ const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const path = require('path');
 const xlsx = require('xlsx');
-const fs = require = require('fs');
+const fs = require('fs');
 const sgMail = require('@sendgrid/mail');
 const { v2: cloudinary } = require('cloudinary');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
@@ -1180,3 +1180,4 @@ app.use((err, req, res, next) => {
 // ================== SERVER START ==================
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server is running on http://localhost:${PORT}`));
+
