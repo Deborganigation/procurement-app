@@ -629,12 +629,10 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
         const { startDate, endDate } = req.body;
         let dateFilter = 'WHERE 1=1';
         const params = [];
-        const chartParams = [];
 
         if (startDate && endDate) {
             dateFilter += ' AND ac.awarded_date BETWEEN ? AND ?';
             params.push(startDate, `${endDate} 23:59:59`);
-            chartParams.push(startDate, `${endDate} 23:59:59`);
         }
         
         const [kpisResult, detailedReport, vendorSpend, awardedValue] = await Promise.all([
@@ -822,7 +820,6 @@ app.put('/api/requisitions/:id/assignments', authenticateToken, isAdmin, async (
 });
 
 // --- 5. USER MANAGEMENT & UTILITIES ---
-// (No major changes in this section, keeping as is)
 app.get('/api/users/pending', authenticateToken, isAdmin, async (req, res, next) => { try { const [rows] = await dbPool.query(`SELECT * FROM pending_users ORDER BY temp_id DESC`); res.json({ success: true, data: rows }); } catch (error) { next(error); } });
 app.post('/api/users/approve', authenticateToken, isAdmin, async (req, res, next) => { try { const { temp_id } = req.body; const [[pendingUser]] = await dbPool.query('SELECT * FROM pending_users WHERE temp_id = ?', [temp_id]); if (!pendingUser) return res.status(404).json({ success: false, message: 'User not found' }); await dbPool.query('INSERT INTO users (full_name, email, password_hash, role, company_name, contact_number, gstin) VALUES (?, ?, ?, ?, ?, ?, ?)', [pendingUser.full_name, pendingUser.email, pendingUser.password, pendingUser.role, pendingUser.company_name, pendingUser.contact_number, pendingUser.gstin]); await dbPool.query('DELETE FROM pending_users WHERE temp_id = ?', [temp_id]); res.json({ success: true, message: 'User approved!' }); } catch (error) { next(error); } });
 app.get('/api/users', authenticateToken, async (req, res, next) => { try { const [rows] = await dbPool.query(`SELECT user_id, full_name, email, role, company_name, contact_number, gstin, is_active FROM users ORDER BY full_name`); res.json({ success: true, data: rows }); } catch (error) { next(error); } });
@@ -843,9 +840,9 @@ app.get('/api/conversations', authenticateToken, async (req, res, next) => {
         const query = `
             SELECT 
                 u.user_id as other_user_id,
-                u.full_name,
-                u.role,
-                m.message_body as lastMessage,
+                ANY_VALUE(u.full_name) as full_name,
+                ANY_VALUE(u.role) as role,
+                ANY_VALUE(m.message_body) as lastMessage,
                 m.timestamp as lastMessageTimestamp,
                 (SELECT COUNT(*) FROM messages WHERE recipient_id = ? AND sender_id = u.user_id AND is_read = 0) as unreadCount
             FROM messages m
@@ -853,11 +850,12 @@ app.get('/api/conversations', authenticateToken, async (req, res, next) => {
             WHERE m.message_id IN (
                 SELECT MAX(m2.message_id)
                 FROM messages m2
-                WHERE (m2.sender_id = ? AND m2.recipient_id = u.user_id) OR (m2.sender_id = u.user_id AND m2.recipient_id = ?)
-            )
+                GROUP BY IF(m2.sender_id = ?, m2.recipient_id, m2.sender_id), IF(m2.recipient_id = ?, m2.sender_id, m2.recipient_id)
+            ) AND (m.sender_id = ? OR m.recipient_id = ?)
+            GROUP BY other_user_id, m.timestamp
             ORDER BY lastMessageTimestamp DESC
         `;
-        const [conversations] = await dbPool.query(query, [myId, myId, myId, myId]);
+        const [conversations] = await dbPool.query(query, [myId, myId, myId, myId, myId, myId]);
         res.json({ success: true, data: conversations });
     } catch (error) {
         next(error);
