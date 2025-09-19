@@ -103,31 +103,43 @@ app.get('/api/requirements/assigned', authenticateToken, async (req, res, next) 
 app.post('/api/bids/bulk', authenticateToken, async (req, res, next) => { if (req.user.role !== 'Vendor') return res.status(403).json({ success: false, message: 'Forbidden' }); let connection; try { connection = await dbPool.getConnection(); const { bids } = req.body; if (!bids || bids.length === 0) return res.status(400).json({ success: false, message: 'No bids to submit.' }); await connection.beginTransaction(); let submittedCount = 0; const skippedBids = []; for (const bid of bids) { const { itemId, ex_works_rate, freight_rate, comments } = bid; const vendorId = req.user.userId; try { const [[countResult]] = await connection.query('SELECT COUNT(*) as count FROM bidding_history_log WHERE item_id = ? AND vendor_id = ?', [itemId, vendorId]); if (countResult.count >= 3) { const [[itemDetails]] = await connection.query('SELECT item_name FROM requisition_items WHERE item_id = ?', [itemId]); skippedBids.push(itemDetails ? itemDetails.item_name : `Item ID ${itemId}`); continue; } const [[itemDetails]] = await connection.query('SELECT quantity, item_name FROM requisition_items WHERE item_id = ?', [itemId]); if (!itemDetails) { skippedBids.push(`Item ID ${itemId} (Not Found)`); continue; } const totalBidAmount = (parseFloat(ex_works_rate) + parseFloat(freight_rate || 0)) * parseFloat(itemDetails.quantity); await connection.query('DELETE FROM bids WHERE item_id = ? AND vendor_id = ?', [itemId, vendorId]); const [result] = await connection.query("INSERT INTO bids (item_id, vendor_id, bid_amount, ex_works_rate, freight_rate, comments, bid_status, submitted_at) VALUES (?, ?, ?, ?, ?, ?, 'Submitted', NOW())", [itemId, vendorId, totalBidAmount, ex_works_rate, freight_rate || 0, comments]); await connection.query("INSERT INTO bidding_history_log (bid_id, item_id, vendor_id, bid_amount, ex_works_rate, freight_rate, bid_status, submitted_at) VALUES (?, ?, ?, ?, ?, ?, 'Submitted', NOW())", [result.insertId, itemId, vendorId, totalBidAmount, ex_works_rate, freight_rate || 0]); submittedCount++; } catch (itemError) { console.error(`Error processing bid for item ID ${itemId}:`, itemError); const [[itemInfo]] = await connection.query('SELECT item_name FROM requisition_items WHERE item_id = ?', [itemId]).catch(() => [[{item_name: `ID ${itemId}`}]]); skippedBids.push(`${itemInfo.item_name} (processing error)`); } } await connection.commit(); let message = `${submittedCount} bid(s) submitted successfully.`; if (skippedBids.length > 0) { message += ` The following items were skipped (limit reached or error): ${skippedBids.join(', ')}.`; } res.json({ success: true, message }); } catch (error) { if (connection) await connection.rollback(); next(error); } finally { if (connection) connection.release(); }});
 app.get('/api/vendor/my-bids', authenticateToken, async (req, res, next) => { try { const query = ` SELECT bhl.*, COALESCE(ri.item_name, 'Item Deleted') as item_name, ri.requisition_id, ri.item_sl_no, (SELECT COUNT(DISTINCT b2.vendor_id) + 1 FROM bids b2 WHERE b2.item_id = bhl.item_id AND b2.bid_amount < bhl.bid_amount) AS \`rank\` FROM bidding_history_log bhl LEFT JOIN requisition_items ri ON bhl.item_id = ri.item_id WHERE bhl.vendor_id = ? ORDER BY bhl.submitted_at DESC `; const [bids] = await dbPool.query(query, [req.user.userId]); res.json({ success: true, data: bids }); } catch (error) { next(error); }});
 app.get('/api/vendor/my-awarded-contracts', authenticateToken, async (req, res, next) => { try { const [contracts] = await dbPool.query(`SELECT ac.*, ri.item_name, ri.requisition_id, ri.item_sl_no FROM awarded_contracts ac JOIN requisition_items ri ON ac.item_id = ri.item_id WHERE ac.vendor_id = ? AND ri.status = 'Awarded' ORDER BY ac.awarded_date DESC`, [req.user.userId]); res.json({ success: true, data: contracts }); } catch (error) { next(error); }});
+
+// ===== FIX: Restored full Vendor Dashboard endpoint =====
 app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next) => {
     try {
         const vendorId = req.user.userId;
         const queries = {
             assignedItems: "SELECT COUNT(*) as count FROM requisition_items ri JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id WHERE ra.vendor_id = ? AND ri.status = 'Active'",
             submittedBids: "SELECT COUNT(DISTINCT item_id) as count FROM bidding_history_log WHERE vendor_id = ?",
-            contractsWon: "SELECT COUNT(*) as count FROM awarded_contracts WHERE vendor_id = ?",
+            contractsWon: "SELECT COUNT(*) as count, SUM(awarded_amount) as totalValue FROM awarded_contracts WHERE vendor_id = ?",
             needsBid: "SELECT COUNT(*) as count FROM requisition_items ri JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id WHERE ra.vendor_id = ? AND ri.status = 'Active' AND ri.item_id NOT IN (SELECT item_id FROM bids WHERE vendor_id = ?)",
+            l1Bids: "SELECT COUNT(*) as count FROM (SELECT item_id FROM bids WHERE vendor_id = ? AND bid_amount = (SELECT MIN(bid_amount) FROM bids b2 WHERE b2.item_id = bids.item_id) GROUP BY item_id) as l1_bids",
+            recentBids: `SELECT bhl.bid_amount, bhl.bid_status, COALESCE(ri.item_name, 'Item Deleted') as item_name FROM bidding_history_log bhl LEFT JOIN requisition_items ri ON bhl.item_id = ri.item_id WHERE bhl.vendor_id = ? ORDER BY bhl.submitted_at DESC LIMIT 5`,
+            avgRank: `SELECT AVG(t.rank) as avg_rank FROM (SELECT (SELECT COUNT(DISTINCT b2.vendor_id) + 1 FROM bids b2 WHERE b2.item_id = b.item_id AND b2.bid_amount < b.bid_amount) as \`rank\` FROM bids b WHERE b.vendor_id = ?) as t`
         };
         const [
-            [[assignedResult]], [[submittedResult]], [[wonResult]], [[needsBidResult]]
+            [[assignedResult]], [[submittedResult]], [[wonResult]], [[needsBidResult]], [[l1BidsResult]], recentBids, [[avgRankResult]]
         ] = await Promise.all([
-            dbPool.query(queries.assignedItems, [vendorId]), 
-            dbPool.query(queries.submittedBids, [vendorId]),
-            dbPool.query(queries.contractsWon, [vendorId]), 
-            dbPool.query(queries.needsBid, [vendorId, vendorId]),
+            dbPool.query(queries.assignedItems, [vendorId]), dbPool.query(queries.submittedBids, [vendorId]),
+            dbPool.query(queries.contractsWon, [vendorId]), dbPool.query(queries.needsBid, [vendorId, vendorId]),
+            dbPool.query(queries.l1Bids, [vendorId]), dbPool.query(queries.recentBids, [vendorId]),
+            dbPool.query(queries.avgRank, [vendorId]),
         ]);
-        
+        const totalBids = submittedResult.count;
+        const contractsWonCount = wonResult.count;
+        const winRate = totalBids > 0 ? (contractsWonCount / totalBids) * 100 : 0;
         res.json({
             success: true,
             data: {
                 assignedItems: assignedResult.count,
-                submittedBids: submittedResult.count,
-                contractsWon: wonResult.count,
+                submittedBids: totalBids,
+                contractsWon: contractsWonCount,
+                totalWonValue: wonResult.totalValue || 0,
                 needsBid: needsBidResult.count,
+                l1Bids: l1BidsResult.count,
+                recentBids: recentBids,
+                avgRank: avgRankResult.avg_rank,
+                winRate: winRate,
             }
         });
     } catch (error) {
@@ -136,6 +148,7 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
 });
 
 // --- 4. ADMIN FEATURES ---
+// ===== FIX: Restored full Admin Dashboard endpoint =====
 app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, res, next) => {
     try {
         const queries = {
@@ -143,14 +156,21 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
             pendingUsers: "SELECT COUNT(*) as count FROM pending_users",
             awardedContracts: "SELECT COUNT(*) as count FROM awarded_contracts",
             pendingRequisitions: "SELECT COUNT(DISTINCT requisition_id) as count FROM requisitions WHERE status = 'Pending Approval'",
+            latestRequisitions: `SELECT r.requisition_id, r.status, r.created_at, COALESCE(u.full_name, 'Unknown User') as creator_name, COALESCE((SELECT COUNT(*) FROM requisition_items ri WHERE ri.requisition_id = r.requisition_id), 0) as item_count FROM requisitions r LEFT JOIN users u ON r.created_by = u.user_id ORDER BY r.created_at DESC LIMIT 5`,
+            notifications: `
+                (SELECT CONCAT(COUNT(*), ' new user(s) awaiting approval.') as text, 'admin-pending-users-view' as view FROM pending_users HAVING COUNT(*) > 0)
+                UNION
+                (SELECT CONCAT(COUNT(DISTINCT requisition_id), ' new requisition(s) to approve.') as text, 'admin-pending-reqs-view' as view FROM requisitions WHERE status = 'Pending Approval' HAVING COUNT(DISTINCT requisition_id) > 0)
+            `,
+            reqTrends: `SELECT DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as count FROM requisitions GROUP BY month ORDER BY month ASC`,
+            biddingActivity: `SELECT u.full_name, COUNT(b.bid_id) as bid_count FROM bids b LEFT JOIN users u ON b.vendor_id = u.user_id WHERE u.full_name IS NOT NULL AND u.full_name != '' GROUP BY u.full_name ORDER BY bid_count DESC LIMIT 5`
         };
         const [
-            [[activeItems]], [[pendingUsers]], [[awardedContracts]], [[pendingRequisitions]]
+            [[activeItems]], [[pendingUsers]], [[awardedContracts]], [[pendingRequisitions]], latestRequisitions, notifications, reqTrends, biddingActivity
         ] = await Promise.all([
-            dbPool.query(queries.activeItems), 
-            dbPool.query(queries.pendingUsers), 
-            dbPool.query(queries.awardedContracts),
-            dbPool.query(queries.pendingRequisitions)
+            dbPool.query(queries.activeItems), dbPool.query(queries.pendingUsers), dbPool.query(queries.awardedContracts),
+            dbPool.query(queries.pendingRequisitions), dbPool.query(queries.latestRequisitions), dbPool.query(queries.notifications),
+            dbPool.query(queries.reqTrends), dbPool.query(queries.biddingActivity)
         ]);
         res.json({
             success: true,
@@ -159,6 +179,18 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
                 pendingUsers: pendingUsers.count,
                 awardedContracts: awardedContracts.count,
                 pendingRequisitionsCount: pendingRequisitions.count,
+                latestRequisitions,
+                notifications,
+                charts: {
+                    reqTrends: {
+                        labels: reqTrends.map(r => r.month),
+                        data: reqTrends.map(r => r.count)
+                    },
+                    biddingActivity: {
+                        labels: biddingActivity.map(r => r.full_name),
+                        data: biddingActivity.map(r => r.bid_count)
+                    }
+                }
             }
         });
     } catch (error) {
@@ -173,65 +205,7 @@ app.get('/api/items/:id/bids', authenticateToken, isAdmin, async (req, res, next
 app.post('/api/admin/bids-for-items', authenticateToken, isAdmin, async (req, res, next) => { try { const { itemIds } = req.body; if (!itemIds || itemIds.length === 0) return res.status(400).json({ success: false, message: "No item IDs provided" }); const [items] = await dbPool.query(`SELECT item_id, item_name, requisition_id, item_sl_no, quantity, unit FROM requisition_items WHERE item_id IN (?)`, [itemIds]); const [bids] = await dbPool.query(`SELECT b.*, u.full_name as vendor_name, u.email as vendor_email FROM bids b JOIN users u ON b.vendor_id = u.user_id WHERE b.item_id IN (?) AND b.bid_status = 'Submitted' ORDER BY b.item_id, b.bid_amount ASC`, [itemIds]); const responseData = items.map(item => ({ ...item, bids: bids.filter(bid => bid.item_id === item.item_id) })); res.json({ success: true, data: responseData }); } catch (error) { next(error); }});
 app.post('/api/contracts/award', authenticateToken, isAdmin, async (req, res, next) => { const { bids } = req.body; let connection; try { connection = await dbPool.getConnection(); await connection.beginTransaction(); for (const bid of bids) { const [[itemDetails]] = await connection.query('SELECT * FROM requisition_items WHERE item_id = ?', [bid.item_id]); if (!itemDetails) throw new Error(`Item with ID ${bid.item_id} not found.`); await connection.query("UPDATE requisition_items SET status = 'Awarded' WHERE item_id = ?", [bid.item_id]); await connection.query("UPDATE bids SET bid_status = 'Awarded' WHERE bid_id = ?", [bid.bid_id]); await connection.query("UPDATE bids SET bid_status = 'Rejected' WHERE item_id = ? AND bid_id != ?", [bid.item_id, bid.bid_id]); await connection.query('DELETE FROM awarded_contracts WHERE item_id = ?', [bid.item_id]); const insertQuery = `INSERT INTO awarded_contracts (item_id, requisition_id, item_name, item_code, quantity, unit, vendor_id, vendor_name, awarded_amount, ex_works_rate, freight_rate, winning_bid_id, remarks, awarded_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`; await connection.query(insertQuery, [ bid.item_id, itemDetails.requisition_id, itemDetails.item_name, itemDetails.item_code, itemDetails.quantity, itemDetails.unit, bid.vendor_id, bid.vendor_name, bid.bid_amount, bid.ex_works_rate, bid.freight_rate, bid.bid_id, bid.remarks ]); } await connection.commit(); res.json({ success: true, message: 'Contracts awarded successfully!' }); } catch (error) { if (connection) await connection.rollback(); next(error); } finally { if (connection) connection.release(); }});
 app.get('/api/admin/awarded-contracts', authenticateToken, isAdmin, async (req, res, next) => { try { const query = `SELECT ac.*, ri.item_sl_no, ri.item_name, u.full_name as vendor_name FROM awarded_contracts ac JOIN users u ON ac.vendor_id = u.user_id LEFT JOIN requisition_items ri ON ac.item_id = ri.item_id ORDER BY ac.awarded_date DESC`; const [contracts] = await dbPool.query(query); res.json({ success: true, data: contracts }); } catch (error) { next(error); }});
-
-// ===== FIX: Cleaned up this entire endpoint to fix SQL syntax error =====
-app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res, next) => {
-    try {
-        const { startDate, endDate } = req.body;
-        
-        let baseKpisQuery = `
-            SELECT
-                COALESCE(SUM(ac.awarded_amount), 0) AS totalSpend,
-                COUNT(ac.item_id) as awardedItemsCount,
-                COALESCE(SUM(CASE WHEN ac.awarded_amount <= (SELECT MIN(b.bid_amount) FROM bids b WHERE b.item_id = ac.item_id) THEN 1 ELSE 0 END), 0) as l1AwardsCount,
-                AVG(DATEDIFF(r.approved_at, r.created_at)) as avgApprovalTime,
-                COALESCE(SUM((SELECT bid_amount FROM bids b WHERE b.item_id = ac.item_id ORDER BY b.bid_amount ASC LIMIT 1 OFFSET 1) - ac.awarded_amount), 0) as costSavings
-            FROM awarded_contracts ac
-            LEFT JOIN requisition_items ri ON ac.item_id = ri.item_id
-            LEFT JOIN requisitions r ON ri.requisition_id = r.requisition_id
-        `;
-        let baseDetailedReportQuery = `SELECT ac.awarded_amount, DATE_FORMAT(ac.awarded_date, '%Y-%m-%d') as awarded_date, ri.requisition_id, ri.item_sl_no, ri.item_name, u.full_name as vendor_name FROM awarded_contracts ac LEFT JOIN requisition_items ri ON ac.item_id = ri.item_id JOIN users u ON ac.vendor_id = u.user_id`;
-        let baseVendorSpendQuery = `SELECT u.full_name as vendor, SUM(ac.awarded_amount) as total_spend FROM awarded_contracts ac JOIN users u ON ac.vendor_id = u.user_id`;
-        let baseAwardedValueQuery = `SELECT DATE_FORMAT(ac.awarded_date, '%Y-%m') as month, SUM(ac.awarded_amount) as total_awarded FROM awarded_contracts ac`;
-        let baseItemSpendQuery = `SELECT ri.item_name, SUM(ac.awarded_amount) as total_spend FROM awarded_contracts ac JOIN requisition_items ri ON ac.item_id = ri.item_id`;
-        let baseItemFrequencyQuery = `SELECT item_name, COUNT(*) as frequency FROM awarded_contracts`;
-        
-        const params = [];
-        let whereClause = '';
-        if (startDate && endDate) {
-            whereClause = ' WHERE ac.awarded_date BETWEEN ? AND ?';
-            params.push(startDate, `${endDate} 23:59:59`);
-        }
-
-        const [kpisResult, detailedReport, vendorSpend, awardedValue, itemSpend, itemFrequency] = await Promise.all([
-            dbPool.query(baseKpisQuery + whereClause, params),
-            dbPool.query(baseDetailedReportQuery + whereClause + ' ORDER BY ac.awarded_date DESC', params),
-            dbPool.query(baseVendorSpendQuery + whereClause + ' GROUP BY u.full_name ORDER BY total_spend DESC LIMIT 5', params),
-            dbPool.query(baseAwardedValueQuery + whereClause + ' GROUP BY month ORDER BY month ASC', params),
-            dbPool.query(baseItemSpendQuery + whereClause.replace('ac.','ri.') + ' GROUP BY ri.item_name ORDER BY total_spend DESC LIMIT 5', params),
-            dbPool.query(baseItemFrequencyQuery + whereClause + ' GROUP BY item_name ORDER BY frequency DESC LIMIT 5', params)
-        ]);
-        
-        const kpis = kpisResult[0][0];
-        const totalAwarded = kpis.awardedItemsCount;
-        const l1AwardRate = totalAwarded > 0 ? (kpis.l1AwardsCount / totalAwarded) * 100 : 0;
-        
-        res.json({
-            success: true,
-            data: {
-                detailedReport: detailedReport[0],
-                kpis: { totalSpend: kpis.totalSpend, l1AwardRate, awardedItemsCount: totalAwarded, avgApprovalTime: kpis.avgApprovalTime || 0, costSavings: kpis.costSavings || 0 },
-                charts: {
-                    vendorSpend: Object.fromEntries(vendorSpend[0].map(row => [row.vendor, parseFloat(row.total_spend)])),
-                    awardedValue: Object.fromEntries(awardedValue[0].map(row => [row.month, parseFloat(row.total_awarded)])),
-                    itemSpend: { labels: itemSpend[0].map(i => i.item_name), data: itemSpend[0].map(i => i.total_spend) },
-                    itemFrequency: { labels: itemFrequency[0].map(i => i.item_name), data: itemFrequency[0].map(i => i.frequency) }
-                }
-            }
-        });
-    } catch (error) { next(error); }
-});
-
+app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res, next) => { try { const { startDate, endDate } = req.body; let baseKpisQuery = ` SELECT COALESCE(SUM(ac.awarded_amount), 0) AS totalSpend, COUNT(ac.item_id) as awardedItemsCount, COALESCE(SUM(CASE WHEN ac.awarded_amount <= (SELECT MIN(b.bid_amount) FROM bids b WHERE b.item_id = ac.item_id) THEN 1 ELSE 0 END), 0) as l1AwardsCount, AVG(DATEDIFF(r.approved_at, r.created_at)) as avgApprovalTime, COALESCE(SUM((SELECT bid_amount FROM bids b WHERE b.item_id = ac.item_id ORDER BY b.bid_amount ASC LIMIT 1 OFFSET 1) - ac.awarded_amount), 0) as costSavings FROM awarded_contracts ac LEFT JOIN requisition_items ri ON ac.item_id = ri.item_id LEFT JOIN requisitions r ON ri.requisition_id = r.requisition_id `; let baseDetailedReportQuery = `SELECT ac.awarded_amount, DATE_FORMAT(ac.awarded_date, '%Y-%m-%d') as awarded_date, ri.requisition_id, ri.item_sl_no, ri.item_name, u.full_name as vendor_name FROM awarded_contracts ac LEFT JOIN requisition_items ri ON ac.item_id = ri.item_id JOIN users u ON ac.vendor_id = u.user_id`; let baseVendorSpendQuery = `SELECT u.full_name as vendor, SUM(ac.awarded_amount) as total_spend FROM awarded_contracts ac JOIN users u ON ac.vendor_id = u.user_id`; let baseAwardedValueQuery = `SELECT DATE_FORMAT(ac.awarded_date, '%Y-%m') as month, SUM(ac.awarded_amount) as total_awarded FROM awarded_contracts ac`; let baseItemSpendQuery = `SELECT ri.item_name, SUM(ac.awarded_amount) as total_spend FROM awarded_contracts ac JOIN requisition_items ri ON ac.item_id = ri.item_id`; let baseItemFrequencyQuery = `SELECT item_name, COUNT(*) as frequency FROM awarded_contracts`; const params = []; let whereClause = ''; if (startDate && endDate) { whereClause = ' WHERE ac.awarded_date BETWEEN ? AND ?'; params.push(startDate, `${endDate} 23:59:59`); } const [kpisResult, detailedReport, vendorSpend, awardedValue, itemSpend, itemFrequency] = await Promise.all([ dbPool.query(baseKpisQuery + whereClause, params), dbPool.query(baseDetailedReportQuery + whereClause + ' ORDER BY ac.awarded_date DESC', params), dbPool.query(baseVendorSpendQuery + whereClause + ' GROUP BY u.full_name ORDER BY total_spend DESC LIMIT 5', params), dbPool.query(baseAwardedValueQuery + whereClause + ' GROUP BY month ORDER BY month ASC', params), dbPool.query(baseItemSpendQuery + whereClause.replace('ac.','ri.') + ' GROUP BY ri.item_name ORDER BY total_spend DESC LIMIT 5', params), dbPool.query(baseItemFrequencyQuery + whereClause + ' GROUP BY item_name ORDER BY frequency DESC LIMIT 5', params) ]); const kpis = kpisResult[0][0]; const totalAwarded = kpis.awardedItemsCount; const l1AwardRate = totalAwarded > 0 ? (kpis.l1AwardsCount / totalAwarded) * 100 : 0; res.json({ success: true, data: { detailedReport: detailedReport[0], kpis: { totalSpend: kpis.totalSpend, l1AwardRate, awardedItemsCount: totalAwarded, avgApprovalTime: kpis.avgApprovalTime || 0, costSavings: kpis.costSavings || 0 }, charts: { vendorSpend: Object.fromEntries(vendorSpend[0].map(row => [row.vendor, parseFloat(row.total_spend)])), awardedValue: Object.fromEntries(awardedValue[0].map(row => [row.month, parseFloat(row.total_awarded)])), itemSpend: { labels: itemSpend[0].map(i => i.item_name), data: itemSpend[0].map(i => i.total_spend) }, itemFrequency: { labels: itemFrequency[0].map(i => i.item_name), data: itemFrequency[0].map(i => i.frequency) } } } }); } catch (error) { next(error); }});
 app.post('/api/items/reopen-bidding', authenticateToken, isAdmin, async (req, res, next) => { let connection; try { connection = await dbPool.getConnection(); const { itemIds } = req.body; await connection.beginTransaction(); await connection.query('DELETE FROM awarded_contracts WHERE item_id IN (?)', [itemIds]); await connection.query("UPDATE requisition_items SET status = 'Active' WHERE item_id IN (?)", [itemIds]); await connection.query("UPDATE bids SET bid_status = 'Submitted' WHERE item_id IN (?)", [itemIds]); await connection.commit(); res.json({ success: true, message: 'Bidding re-opened successfully.' }); } catch(error) { if(connection) await connection.rollback(); next(error); } finally { if(connection) connection.release(); }});
 app.post('/api/requisitions/bulk-upload', authenticateToken, isAdmin, excelUpload.single('bulkFile'), async (req, res, next) => { if (!req.file) return res.status(400).json({ success: false, message: 'No Excel file uploaded.' }); let parsedVendorIds = []; try { if (req.body.vendorIds) parsedVendorIds = JSON.parse(req.body.vendorIds); } catch (e) { return res.status(400).json({ success: false, message: 'Invalid vendor data.' }); } let connection; try { connection = await dbPool.getConnection(); const workbook = xlsx.read(req.file.buffer, { type: 'buffer' }); const items = xlsx.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]); if (items.length === 0) return res.status(400).json({ success: false, message: 'Excel file is empty or invalid.' }); await connection.beginTransaction(); const [reqResult] = await connection.query("INSERT INTO requisitions (created_by, status, created_at) VALUES (?, 'Pending Approval', NOW())", [req.user.userId]); const reqId = reqResult.insertId; for (const [i, item] of items.entries()) { await connection.query( "INSERT INTO requisition_items (requisition_id, item_sl_no, item_name, item_code, description, quantity, unit, freight_required, delivery_location, status, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())", [reqId, i + 1, item.ItemName, item.ItemCode, item.Description, item.Quantity, item.Unit, (String(item.FreightRequired).toLowerCase() === 'yes'), item.DeliveryLocation, 'Pending Approval', req.user.userId] ); } if (parsedVendorIds && parsedVendorIds.length > 0) { const values = parsedVendorIds.map(vId => [reqId, vId, new Date()]); await connection.query('INSERT INTO requisition_assignments (requisition_id, vendor_id, assigned_at) VALUES ?', [values]); } await connection.commit(); res.status(201).json({ success: true, message: `${items.length} items uploaded and submitted successfully!` }); } catch (error) { if(connection) await connection.rollback(); next(error); } finally { if(connection) connection.release(); }});
 app.get('/api/admin/bidding-history', authenticateToken, isAdmin, async (req, res, next) => { try { const [bids] = await dbPool.query(`SELECT bhl.*, u.full_name as vendor_name, ri.item_name, ri.requisition_id, ri.item_sl_no FROM bidding_history_log bhl JOIN users u ON bhl.vendor_id = u.user_id JOIN requisition_items ri ON bhl.item_id = ri.item_id ORDER BY bhl.submitted_at DESC`); res.json({ success: true, data: bids }); } catch (error) { next(error); }});
