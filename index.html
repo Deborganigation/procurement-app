@@ -258,28 +258,32 @@
             const result = await apiCall('/requirements/assigned');
             if(!result.success) return;
             const tbody = $('#vendor-reqs-tbody').empty();
-            if(result.data.length === 0) { tbody.html(`<tr><td colspan="6" class="text-center p-4">No open requirements assigned for bidding.</td></tr>`); return; }
+            if(result.data.length === 0) { tbody.html(`<tr><td colspan="5" class="text-center p-4">No open requirements assigned for bidding.</td></tr>`); return; }
             result.data.forEach(item => {
                 const isBidded = item.my_bid_status;
                 const itemRow = `<tr data-item='${JSON.stringify(item)}'>
-                        <td><strong>${item.item_name || 'N/A'}</strong><br><small class="text-muted">REQ-${item.requisition_id}-${item.item_sl_no}</small></td>
-                        <td>${item.delivery_location || 'N/A'}</td>
-                        <td>${item.quantity || 'N/A'} ${item.unit || 'N/A'}</td>
-                        <td>${isBidded ? `<span class="badge bg-${getBadgeColor(item.my_bid_status)}">${item.my_bid_status}</span>` : `<span class="badge bg-warning">Bidding Open</span>`}</td>
-                        <td>${isBidded && item.my_rank ? `<span class="badge bg-info">L${item.my_rank}</span>` : 'N/A'}</td>
-                    </tr>`;
+                    <td><strong>${item.item_name || 'N/A'}</strong><br><small class="text-muted">REQ-${item.requisition_id}-${item.item_sl_no} | ${createImageLinks(item)}</small></td>
+                    <td>${item.delivery_location || 'N/A'}</td>
+                    <td>${item.quantity || 'N/A'} ${item.unit || 'N/A'}</td>
+                    <td>${isBidded ? `<span class="badge bg-${getBadgeColor(item.my_bid_status)}">${item.my_bid_status}</span>` : `<span class="badge bg-warning">Bidding Open</span>`}</td>
+                    <td>${isBidded && item.my_rank ? `<span class="badge bg-info">L${item.my_rank}</span>` : 'N/A'}</td>
+                </tr>`;
                 const freightValue = item.freight_required ? (item.my_freight_rate || '') : '0';
                 const freightReadonly = !item.freight_required;
                 const freightClass = !item.freight_required ? 'not-applicable' : '';
+                const attempts = item.bid_attempts || 0;
+                const isDisabled = attempts >= 3;
+
                 const bidRow = `<tr class="bidding-row" data-bid-row-for="${item.item_id}">
-                        <td colspan="6" class="p-3 bg-light">
-                            <div class="bid-input-group">
-                                <div><label class="form-label small mb-1">Ex-works Rate/Unit (₹)</label><input type="number" step="0.01" class="form-control form-control-sm ex-works-rate" value="${item.my_ex_works_rate || ''}"></div>
-                                <div><label class="form-label small mb-1">Freight Rate/Unit (₹)</label><input type="number" step="0.01" class="form-control form-control-sm freight-rate ${freightClass}" value="${freightValue}" ${freightReadonly ? 'readonly' : ''}></div>
-                                <div><label class="form-label small mb-1">Comments (Optional)</label><input type="text" class="form-control form-control-sm comments"></div>
-                            </div>
-                        </td>
-                    </tr>`;
+                    <td colspan="5" class="p-3 bg-light">
+                        ${isDisabled ? `<div class="text-center text-danger small"><i class="fas fa-exclamation-circle me-1"></i> You have reached the maximum of 3 bids for this item.</div>` : `
+                        <div class="bid-input-group">
+                            <div><label class="form-label small mb-1">Ex-works Rate/Unit (₹)</label><input type="number" step="0.01" class="form-control form-control-sm ex-works-rate" value="${item.my_ex_works_rate || ''}"></div>
+                            <div><label class="form-label small mb-1">Freight Rate/Unit (₹)</label><input type="number" step="0.01" class="form-control form-control-sm freight-rate ${freightClass}" value="${freightValue}" ${freightReadonly ? 'readonly' : ''}></div>
+                            <div><label class="form-label small mb-1">Comments (Optional)</label><input type="text" class="form-control form-control-sm comments"></div>
+                        </div>`}
+                    </td>
+                </tr>`;
                 tbody.append(itemRow + bidRow);
             });
         }
@@ -311,53 +315,42 @@
         // ================ ACTION HANDLERS ========================
         // =========================================================
         async function handleBulkBidSubmit() {
-            showToast('Submitting all entered bids...', 'info');
-            const bidPromises = [];
-            const failedItems = [];
-
+            const bidsToSubmit = [];
+            const skippedBids = [];
+            
             $('#vendor-reqs-tbody .bidding-row').each(function() {
                 const bidRow = $(this);
                 const itemRow = bidRow.prev('tr');
                 const item = JSON.parse(itemRow.attr('data-item'));
-                const exWorksRate = bidRow.find('.ex-works-rate').val();
+                const exWorksRateInput = bidRow.find('.ex-works-rate');
+                
+                if (exWorksRateInput.length === 0) return; // Skip if it's disabled (max bids)
 
-                if (exWorksRate && parseFloat(exWorksRate) > 0) {
-                    const bidPayload = {
+                const newExWorks = exWorksRateInput.val();
+                const newFreight = bidRow.find('.freight-rate').val();
+
+                const originalExWorks = item.my_ex_works_rate || '';
+                const originalFreight = item.my_freight_rate || '';
+
+                if (newExWorks && (String(originalExWorks) !== newExWorks || String(originalFreight) !== newFreight)) {
+                    bidsToSubmit.push({
                         itemId: item.item_id,
-                        ex_works_rate: parseFloat(exWorksRate),
-                        freight_rate: parseFloat(bidRow.find('.freight-rate').val()) || 0,
+                        ex_works_rate: parseFloat(newExWorks),
+                        freight_rate: parseFloat(newFreight) || 0,
                         comments: bidRow.find('.comments').val() || ''
-                    };
-                    bidPromises.push(apiCall('/bids', 'POST', bidPayload, false, false).catch(err => ({ success: false, error: err.message, itemName: item.item_name })));
+                    });
                 }
             });
 
-            if (bidPromises.length === 0) { return showToast('No new bids were entered to submit.', 'warning'); }
-
-            showLoader();
-            const results = await Promise.allSettled(bidPromises);
-            hideLoader();
-
-            let successfulBids = 0;
-            results.forEach(result => {
-                if (result.status === 'fulfilled' && result.value.success) {
-                    successfulBids++;
-                } else {
-                    const errorMsg = result.reason?.message || result.value?.error || 'Unknown error';
-                    const itemName = JSON.parse(result.reason?.request?.body || result.value?.request?.body || '{}')?.itemName || 'an item';
-                    failedItems.push(`<li><strong>${itemName}:</strong> ${errorMsg}</li>`);
-                }
-            });
-
-            if (successfulBids > 0) {
-                showToast(`${successfulBids} bids submitted successfully!`, 'success');
+            if (bidsToSubmit.length === 0) {
+                return showToast('No new or updated bids were entered.', 'warning');
             }
-            if (failedItems.length > 0) {
-                $('#bulk-bid-error-list').html(failedItems.join(''));
-                bulkBidErrorModal.show();
+
+            const result = await apiCall('/api/bids/bulk', 'POST', { bids: bidsToSubmit });
+            if (result.success) {
+                showToast(result.message, 'success');
+                load_vendor_requirements_view();
             }
-            
-            load_vendor_requirements_view();
         }
         
         async function openReopenBiddingModal(itemIds) {
