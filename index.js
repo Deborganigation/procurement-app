@@ -167,7 +167,9 @@ app.get('/api/requisitions/my-status', authenticateToken, async (req, res, next)
         const [items] = await dbPool.query(`SELECT ri.*, ac.awarded_amount, u.full_name as awarded_vendor FROM requisition_items ri LEFT JOIN awarded_contracts ac ON ri.item_id = ac.item_id LEFT JOIN users u ON ac.vendor_id = u.user_id WHERE ri.requisition_id IN (?) ORDER BY ri.item_sl_no ASC`, [reqIds]);
         const finalData = myReqs.map(req => ({ ...req, items: items.filter(item => item.requisition_id === req.requisition_id) }));
         res.json({ success: true, data: finalData });
-    } catch (error) { next(error); }
+    } catch (error) {
+        next(error);
+    }
 });
 
 // --- 3. VENDOR FEATURES ---
@@ -191,7 +193,9 @@ app.get('/api/requirements/assigned', authenticateToken, async (req, res, next) 
         `;
         const [items] = await dbPool.query(query, [vendorId, vendorId, vendorId]);
         res.json({ success: true, data: items });
-    } catch (error) { next(error); }
+    } catch (error) {
+        next(error);
+    }
 });
 
 app.post('/api/bids/bulk', authenticateToken, async (req, res, next) => {
@@ -224,13 +228,13 @@ app.post('/api/bids/bulk', authenticateToken, async (req, res, next) => {
                     skippedBids.push(`Item ID ${itemId} (Not Found)`);
                     continue;
                 }
-
+                
                 const totalBidAmount = (parseFloat(ex_works_rate) + parseFloat(freight_rate || 0)) * parseFloat(itemDetails.quantity);
 
                 await connection.query('DELETE FROM bids WHERE item_id = ? AND vendor_id = ?', [itemId, vendorId]);
                 const [result] = await connection.query("INSERT INTO bids (item_id, vendor_id, bid_amount, ex_works_rate, freight_rate, comments, bid_status, submitted_at) VALUES (?, ?, ?, ?, ?, ?, 'Submitted', NOW())", [itemId, vendorId, totalBidAmount, ex_works_rate, freight_rate || 0, comments]);
                 await connection.query("INSERT INTO bidding_history_log (bid_id, item_id, vendor_id, bid_amount, ex_works_rate, freight_rate, bid_status, submitted_at) VALUES (?, ?, ?, ?, ?, ?, 'Submitted', NOW())", [result.insertId, itemId, vendorId, totalBidAmount, ex_works_rate, freight_rate || 0]);
-
+                
                 submittedCount++;
             } catch (itemError) {
                 console.error(`Error processing bid for item ID ${itemId}:`, itemError);
@@ -240,7 +244,7 @@ app.post('/api/bids/bulk', authenticateToken, async (req, res, next) => {
         }
 
         await connection.commit();
-
+        
         let message = `${submittedCount} bid(s) submitted successfully.`;
         if (skippedBids.length > 0) {
             message += ` The following items were skipped (limit reached or error): ${skippedBids.join(', ')}.`;
@@ -254,7 +258,6 @@ app.post('/api/bids/bulk', authenticateToken, async (req, res, next) => {
         if (connection) connection.release();
     }
 });
-
 
 app.get('/api/vendor/my-bids', authenticateToken, async (req, res, next) => {
     try {
@@ -297,7 +300,7 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
             contractsWon: "SELECT COUNT(*) as count, SUM(awarded_amount) as totalValue FROM awarded_contracts WHERE vendor_id = ?",
             needsBid: "SELECT COUNT(*) as count FROM requisition_items ri JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id WHERE ra.vendor_id = ? AND ri.status = 'Active' AND ri.item_id NOT IN (SELECT item_id FROM bids WHERE vendor_id = ?)",
             l1Bids: "SELECT COUNT(*) as count FROM (SELECT item_id FROM bids WHERE vendor_id = ? AND bid_amount = (SELECT MIN(bid_amount) FROM bids b2 WHERE b2.item_id = bids.item_id) GROUP BY item_id) as l1_bids",
-            recentBids: `SELECT bhl.bid_amount, bhl.bid_status, ri.item_name FROM bidding_history_log bhl LEFT JOIN requisition_items ri ON bhl.item_id = ri.item_id WHERE bhl.vendor_id = ? ORDER BY bhl.submitted_at DESC LIMIT 5`,
+            recentBids: `SELECT bhl.bid_amount, bhl.bid_status, COALESCE(ri.item_name, 'Item Deleted') as item_name FROM bidding_history_log bhl LEFT JOIN requisition_items ri ON bhl.item_id = ri.item_id WHERE bhl.vendor_id = ? ORDER BY bhl.submitted_at DESC LIMIT 5`,
             avgRank: `SELECT AVG(t.rank) as avg_rank FROM (SELECT (SELECT COUNT(DISTINCT b2.vendor_id) + 1 FROM bids b2 WHERE b2.item_id = b.item_id AND b2.bid_amount < b.bid_amount) as \`rank\` FROM bids b WHERE b.vendor_id = ?) as t`
         };
         const [
@@ -338,7 +341,7 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
             pendingUsers: "SELECT COUNT(*) as count FROM pending_users",
             awardedContracts: "SELECT COUNT(*) as count FROM awarded_contracts",
             pendingRequisitions: "SELECT COUNT(DISTINCT requisition_id) as count FROM requisitions WHERE status = 'Pending Approval'",
-            latestRequisitions: `SELECT r.requisition_id, r.status, r.created_at, COALESCE(u.full_name, 'N/A') as creator_name, (SELECT COUNT(*) FROM requisition_items ri WHERE ri.requisition_id = r.requisition_id) as item_count FROM requisitions r LEFT JOIN users u ON r.created_by = u.user_id ORDER BY r.created_at DESC LIMIT 5`,
+            latestRequisitions: `SELECT r.requisition_id, r.status, r.created_at, COALESCE(u.full_name, 'Unknown User') as creator_name, (SELECT COUNT(*) FROM requisition_items ri WHERE ri.requisition_id = r.requisition_id) as item_count FROM requisitions r LEFT JOIN users u ON r.created_by = u.user_id ORDER BY r.created_at DESC LIMIT 5`,
             notifications: `SELECT CONCAT('New user registered: ', full_name) AS text, submitted_at AS timestamp FROM pending_users ORDER BY submitted_at DESC LIMIT 5`,
             reqTrends: `SELECT DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as count FROM requisitions GROUP BY month ORDER BY month ASC`,
             biddingActivity: `SELECT u.full_name, COUNT(b.bid_id) as bid_count FROM bids b JOIN users u ON b.vendor_id = u.user_id WHERE u.full_name IS NOT NULL GROUP BY u.full_name ORDER BY bid_count DESC LIMIT 5`
@@ -505,9 +508,9 @@ app.post('/api/admin/reports-data', authenticateToken, isAdmin, async (req, res,
                     AVG(DATEDIFF(r.approved_at, r.created_at)) as avgApprovalTime,
                     COALESCE(SUM((SELECT bid_amount FROM bids b WHERE b.item_id = ac.item_id ORDER BY b.bid_amount ASC LIMIT 1 OFFSET 1) - ac.awarded_amount), 0) as costSavings
                 FROM awarded_contracts ac
-                JOIN requisition_items ri ON ac.item_id = ri.item_id
+                LEFT JOIN requisition_items ri ON ac.item_id = ri.item_id
                 LEFT JOIN requisitions r ON ri.requisition_id = r.requisition_id
-                ${dateFilter.replace('awarded_date', 'ac.awarded_date')}`, params),
+                ${dateFilter.replace(' WHERE', 'WHERE ac.')}`, params),
             dbPool.query(`SELECT ac.awarded_amount, DATE_FORMAT(ac.awarded_date, '%Y-%m-%d') as awarded_date, ri.requisition_id, ri.item_sl_no, ri.item_name, u.full_name as vendor_name FROM awarded_contracts ac LEFT JOIN requisition_items ri ON ac.item_id = ri.item_id JOIN users u ON ac.vendor_id = u.user_id ${dateFilter} ORDER BY ac.awarded_date DESC`, params),
             dbPool.query(`SELECT u.full_name as vendor, SUM(ac.awarded_amount) as total_spend FROM awarded_contracts ac JOIN users u ON ac.vendor_id = u.user_id ${dateFilter} GROUP BY u.full_name ORDER BY total_spend DESC LIMIT 5`, params),
             dbPool.query(`SELECT DATE_FORMAT(ac.awarded_date, '%Y-%m') as month, SUM(ac.awarded_amount) as total_awarded FROM awarded_contracts ac ${dateFilter} GROUP BY month ORDER BY month ASC`, params),
@@ -646,98 +649,16 @@ app.put('/api/requisitions/:id/assignments', authenticateToken, isAdmin, async (
 });
 
 // --- USER MANAGEMENT & UTILITIES ---
-app.get('/api/users/pending', authenticateToken, isAdmin, async (req, res, next) => {
-    try {
-        const [rows] = await dbPool.query(`SELECT * FROM pending_users ORDER BY temp_id DESC`);
-        res.json({ success: true, data: rows });
-    } catch (error) {
-        next(error);
-    }
-});
-app.post('/api/users/approve', authenticateToken, isAdmin, async (req, res, next) => {
-    try {
-        const { temp_id } = req.body;
-        const [[pendingUser]] = await dbPool.query('SELECT * FROM pending_users WHERE temp_id = ?', [temp_id]);
-        if (!pendingUser) return res.status(404).json({ success: false, message: 'User not found' });
-        await dbPool.query('INSERT INTO users (full_name, email, password_hash, role, company_name, contact_number, gstin) VALUES (?, ?, ?, ?, ?, ?, ?)', [pendingUser.full_name, pendingUser.email, pendingUser.password, pendingUser.role, pendingUser.company_name, pendingUser.contact_number, pendingUser.gstin]);
-        await dbPool.query('DELETE FROM pending_users WHERE temp_id = ?', [temp_id]);
-        res.json({ success: true, message: 'User approved!' });
-    } catch (error) {
-        next(error);
-    }
-});
-app.get('/api/users', authenticateToken, async (req, res, next) => {
-    try {
-        const [rows] = await dbPool.query(`SELECT user_id, full_name, email, role, company_name, contact_number, gstin, is_active FROM users ORDER BY full_name`);
-        res.json({ success: true, data: rows });
-    } catch (error) {
-        next(error);
-    }
-});
-app.get('/api/users/vendors', authenticateToken, async (req, res, next) => {
-    try {
-        const [vendors] = await dbPool.query("SELECT user_id, full_name FROM users WHERE role = 'Vendor' AND is_active = 1");
-        res.json({ success: true, data: vendors });
-    } catch (error) {
-        next(error);
-    }
-});
-app.get('/api/users/admins', authenticateToken, async (req, res, next) => {
-    try {
-        const [admins] = await dbPool.query("SELECT email FROM users WHERE role = 'Admin' AND is_active = 1");
-        res.json({ success: true, data: admins.map(a => a.email) });
-    } catch (error) {
-        next(error);
-    }
-});
-app.put('/api/users/:id', authenticateToken, isAdmin, async (req, res, next) => {
-    try {
-        const { id } = req.params;
-        const { full_name, email, role, company_name, contact_number, gstin, password } = req.body;
-        let query = 'UPDATE users SET full_name=?, email=?, role=?, company_name=?, contact_number=?, gstin=?';
-        let params = [full_name, email, role, company_name, contact_number, gstin];
-        if (password) {
-            const hashedPassword = await bcrypt.hash(password, 10);
-            query += ', password_hash=?, force_password_reset=?';
-            params.push(hashedPassword, true);
-        }
-        query += ' WHERE user_id=?';
-        params.push(id);
-        await dbPool.query(query, params);
-        res.json({ success: true, message: 'User updated successfully.' });
-    } catch (error) {
-        next(error);
-    }
-});
-app.post('/api/users/add', authenticateToken, isAdmin, async (req, res, next) => {
-    try {
-        const { full_name, email, password, role, company_name, contact_number, gstin } = req.body;
-        if (!full_name || !email || !password || !role) {
-            return res.status(400).json({ success: false, message: 'Name, email, password, and role are required.' });
-        }
-        const hashedPassword = await bcrypt.hash(password, 10);
-        await dbPool.query('INSERT INTO users (full_name, email, password_hash, role, company_name, contact_number, gstin, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [full_name, email, hashedPassword, role, company_name, contact_number, gstin, 1]);
-        res.status(201).json({ success: true, message: 'User created successfully.' });
-    } catch (error) {
-        if (error.code === 'ER_DUP_ENTRY') return res.status(400).json({ success: false, message: 'This email is already registered.' });
-        next(error);
-    }
-});
-app.post('/api/users/set-password', authenticateToken, async (req, res, next) => {
-    try {
-        const { newPassword } = req.body;
-        if (!newPassword || newPassword.length < 4) {
-            return res.status(400).json({ success: false, message: 'Password is too short.' });
-        }
-        const hashedPassword = await bcrypt.hash(newPassword, 10);
-        await dbPool.query('UPDATE users SET password_hash = ?, force_password_reset = ? WHERE user_id = ?', [hashedPassword, false, req.user.userId]);
-        res.json({ success: true, message: 'Password updated successfully.' });
-    } catch (error) {
-        next(error);
-    }
-});
+app.get('/api/users/pending', authenticateToken, isAdmin, async (req, res, next) => { try { const [rows] = await dbPool.query(`SELECT * FROM pending_users ORDER BY temp_id DESC`); res.json({ success: true, data: rows }); } catch (error) { next(error); }});
+app.post('/api/users/approve', authenticateToken, isAdmin, async (req, res, next) => { try { const { temp_id } = req.body; const [[pendingUser]] = await dbPool.query('SELECT * FROM pending_users WHERE temp_id = ?', [temp_id]); if (!pendingUser) return res.status(404).json({ success: false, message: 'User not found' }); await dbPool.query('INSERT INTO users (full_name, email, password_hash, role, company_name, contact_number, gstin) VALUES (?, ?, ?, ?, ?, ?, ?)', [pendingUser.full_name, pendingUser.email, pendingUser.password, pendingUser.role, pendingUser.company_name, pendingUser.contact_number, pendingUser.gstin]); await dbPool.query('DELETE FROM pending_users WHERE temp_id = ?', [temp_id]); res.json({ success: true, message: 'User approved!' }); } catch (error) { next(error); }});
+app.get('/api/users', authenticateToken, async (req, res, next) => { try { const [rows] = await dbPool.query(`SELECT user_id, full_name, email, role, company_name, contact_number, gstin, is_active FROM users ORDER BY full_name`); res.json({ success: true, data: rows }); } catch (error) { next(error); }});
+app.get('/api/users/vendors', authenticateToken, async (req, res, next) => { try { const [vendors] = await dbPool.query("SELECT user_id, full_name FROM users WHERE role = 'Vendor' AND is_active = 1"); res.json({ success: true, data: vendors }); } catch (error) { next(error); }});
+app.get('/api/users/admins', authenticateToken, async (req, res, next) => { try { const [admins] = await dbPool.query("SELECT email FROM users WHERE role = 'Admin' AND is_active = 1"); res.json({ success: true, data: admins.map(a => a.email) }); } catch (error) { next(error); }});
+app.put('/api/users/:id', authenticateToken, isAdmin, async (req, res, next) => { try { const { id } = req.params; const { full_name, email, role, company_name, contact_number, gstin, password } = req.body; let query = 'UPDATE users SET full_name=?, email=?, role=?, company_name=?, contact_number=?, gstin=?'; let params = [full_name, email, role, company_name, contact_number, gstin]; if (password) { const hashedPassword = await bcrypt.hash(password, 10); query += ', password_hash=?, force_password_reset=?'; params.push(hashedPassword, true); } query += ' WHERE user_id=?'; params.push(id); await dbPool.query(query, params); res.json({ success: true, message: 'User updated successfully.' }); } catch (error) { next(error); }});
+app.post('/api/users/add', authenticateToken, isAdmin, async (req, res, next) => { try { const { full_name, email, password, role, company_name, contact_number, gstin } = req.body; if (!full_name || !email || !password || !role) { return res.status(400).json({ success: false, message: 'Name, email, password, and role are required.'}); } const hashedPassword = await bcrypt.hash(password, 10); await dbPool.query( 'INSERT INTO users (full_name, email, password_hash, role, company_name, contact_number, gstin, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [full_name, email, hashedPassword, role, company_name, contact_number, gstin, 1] ); res.status(201).json({ success: true, message: 'User created successfully.' }); } catch (error) { if (error.code === 'ER_DUP_ENTRY') return res.status(400).json({ success: false, message: 'This email is already registered.' }); next(error); }});
+app.post('/api/users/set-password', authenticateToken, async (req, res, next) => { try { const { newPassword } = req.body; if (!newPassword || newPassword.length < 4) { return res.status(400).json({ success: false, message: 'Password is too short.' }); } const hashedPassword = await bcrypt.hash(newPassword, 10); await dbPool.query( 'UPDATE users SET password_hash = ?, force_password_reset = ? WHERE user_id = ?', [hashedPassword, false, req.user.userId] ); res.json({ success: true, message: 'Password updated successfully.' }); } catch(error) { next(error); }});
 
-// --- 6. MESSAGING & NOTIFICATIONS API ---
+// --- MESSAGING & NOTIFICATIONS API ---
 app.post('/api/messages', authenticateToken, async (req, res, next) => {
     try {
         const { recipientId, messageBody } = req.body;
