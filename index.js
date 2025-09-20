@@ -106,7 +106,14 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
             contractsWon: "SELECT COUNT(*) as count, SUM(awarded_amount) as totalValue FROM awarded_contracts WHERE vendor_id = ?",
             needsBid: "SELECT COUNT(*) as count FROM requisition_items ri JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id WHERE ra.vendor_id = ? AND ri.status = 'Active' AND ri.item_id NOT IN (SELECT item_id FROM bids WHERE vendor_id = ?)",
             l1Bids: "SELECT COUNT(*) as count FROM (SELECT item_id FROM bids WHERE vendor_id = ? AND bid_amount = (SELECT MIN(bid_amount) FROM bids b2 WHERE b2.item_id = bids.item_id) GROUP BY item_id) as l1_bids",
-            recentBids: `SELECT bhl.bid_amount, bhl.bid_status, bhl.submitted_at, COALESCE(ri.item_name, 'Item Deleted') as item_name FROM bidding_history_log bhl LEFT JOIN requisition_items ri ON bhl.item_id = ri.item_id WHERE bhl.vendor_id = ? ORDER BY bhl.submitted_at DESC LIMIT 5`,
+            // ===== FIX: Changed LEFT JOIN to INNER JOIN to hide bids for deleted items =====
+            recentBids: `
+                SELECT bhl.bid_amount, bhl.bid_status, bhl.submitted_at, ri.item_name 
+                FROM bidding_history_log bhl 
+                INNER JOIN requisition_items ri ON bhl.item_id = ri.item_id 
+                WHERE bhl.vendor_id = ? 
+                ORDER BY bhl.submitted_at DESC 
+                LIMIT 5`,
             avgRank: `SELECT AVG(t.rank) as avg_rank FROM (SELECT (SELECT COUNT(DISTINCT b2.vendor_id) + 1 FROM bids b2 WHERE b2.item_id = b.item_id AND b2.bid_amount < b.bid_amount) as \`rank\` FROM bids b WHERE b.vendor_id = ?) as t`
         };
         const [
@@ -125,7 +132,6 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
 });
 
 // --- 4. ADMIN FEATURES ---
-// ===== NEW: Rewrote the Admin Dashboard logic to be more reliable =====
 app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, res, next) => {
     try {
         // --- Step 1: Run simple count and chart queries together ---
@@ -133,16 +139,14 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
             activeItems: "SELECT COUNT(*) as count FROM requisition_items WHERE status = 'Active'",
             awardedContracts: "SELECT COUNT(*) as count FROM awarded_contracts",
             reqTrends: "SELECT DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as count FROM requisitions GROUP BY month ORDER BY month ASC",
-            biddingActivity: `SELECT u.full_name, COUNT(b.bid_id) as bid_count FROM bids b JOIN users u ON b.vendor_id = u.user_id WHERE u.role = 'Vendor' AND u.full_name IS NOT NULL AND u.full_name != '' GROUP BY u.user_id, u.full_name ORDER BY bid_count DESC LIMIT 5`
         };
 
         const [
-            [[activeItems]], [[awardedContracts]], reqTrends, biddingActivity
+            [[activeItems]], [[awardedContracts]], reqTrends
         ] = await Promise.all([
             dbPool.query(queries.activeItems),
             dbPool.query(queries.awardedContracts),
             dbPool.query(queries.reqTrends),
-            dbPool.query(queries.biddingActivity)
         ]);
         
         // --- Step 2: Manually build Notifications (Quick Actions) for maximum reliability ---
@@ -167,8 +171,22 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
             const countsMap = new Map(itemCounts.map(item => [item.requisition_id, item.item_count]));
             latestRequisitions = latestRequisitionsRaw.map(req => ({ ...req, item_count: countsMap.get(req.requisition_id) || 0 }));
         }
+        
+        // --- Step 4: Fetch Bidding Activity using a reliable 2-step method ---
+        const [biddingActivityRaw] = await dbPool.query(`SELECT vendor_id, COUNT(bid_id) as bid_count FROM bids GROUP BY vendor_id ORDER BY bid_count DESC LIMIT 5`);
+        
+        let biddingActivity = [];
+        if (biddingActivityRaw.length > 0) {
+            const vendorIds = biddingActivityRaw.map(b => b.vendor_id);
+            const [vendorNames] = await dbPool.query(`SELECT user_id, full_name FROM users WHERE user_id IN (?)`, [vendorIds]);
+            const namesMap = new Map(vendorNames.map(v => [v.user_id, v.full_name]));
+            biddingActivity = biddingActivityRaw.map(b => ({
+                full_name: namesMap.get(b.vendor_id) || 'Unknown Vendor',
+                bid_count: b.bid_count
+            }));
+        }
 
-        // --- Step 4: Combine all data and send the response ---
+        // --- Step 5: Combine all data and send the response ---
         res.json({
             success: true,
             data: {
