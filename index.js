@@ -100,35 +100,57 @@ app.get('/api/vendor/my-awarded-contracts', authenticateToken, async (req, res, 
 app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next) => {
     try {
         const vendorId = req.user.userId;
+        
+        // ===== FINAL FIX: Using INNER JOIN to hide deleted items and LIMIT 10 as requested =====
+        const recentBidsQuery = `
+            SELECT bhl.bid_amount, bhl.bid_status, bhl.submitted_at, ri.item_name 
+            FROM bidding_history_log bhl 
+            INNER JOIN requisition_items ri ON bhl.item_id = ri.item_id 
+            WHERE bhl.vendor_id = ? 
+            ORDER BY bhl.submitted_at DESC 
+            LIMIT 10`;
+
         const queries = {
             assignedItems: "SELECT COUNT(*) as count FROM requisition_items ri JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id WHERE ra.vendor_id = ? AND ri.status = 'Active'",
             submittedBids: "SELECT COUNT(DISTINCT item_id) as count FROM bidding_history_log WHERE vendor_id = ?",
             contractsWon: "SELECT COUNT(*) as count, SUM(awarded_amount) as totalValue FROM awarded_contracts WHERE vendor_id = ?",
             needsBid: "SELECT COUNT(*) as count FROM requisition_items ri JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id WHERE ra.vendor_id = ? AND ri.status = 'Active' AND ri.item_id NOT IN (SELECT item_id FROM bids WHERE vendor_id = ?)",
             l1Bids: "SELECT COUNT(*) as count FROM (SELECT item_id FROM bids WHERE vendor_id = ? AND bid_amount = (SELECT MIN(bid_amount) FROM bids b2 WHERE b2.item_id = bids.item_id) GROUP BY item_id) as l1_bids",
-            // ===== FINAL FIX: Shows last 10 bids for existing items only =====
-            recentBids: `
-                SELECT bhl.bid_amount, bhl.bid_status, bhl.submitted_at, ri.item_name 
-                FROM bidding_history_log bhl 
-                INNER JOIN requisition_items ri ON bhl.item_id = ri.item_id 
-                WHERE bhl.vendor_id = ? 
-                ORDER BY bhl.submitted_at DESC 
-                LIMIT 10`,
             avgRank: `SELECT AVG(t.rank) as avg_rank FROM (SELECT (SELECT COUNT(DISTINCT b2.vendor_id) + 1 FROM bids b2 WHERE b2.item_id = b.item_id AND b2.bid_amount < b.bid_amount) as \`rank\` FROM bids b WHERE b.vendor_id = ?) as t`
         };
         const [
-            [[assignedResult]], [[submittedResult]], [[wonResult]], [[needsBidResult]], [[l1BidsResult]], recentBids, [[avgRankResult]]
+            [[assignedResult]], [[submittedResult]], [[wonResult]], [[needsBidResult]], [[l1BidsResult]], [[avgRankResult]], [recentBids]
         ] = await Promise.all([
-            dbPool.query(queries.assignedItems, [vendorId]), dbPool.query(queries.submittedBids, [vendorId]),
-            dbPool.query(queries.contractsWon, [vendorId]), dbPool.query(queries.needsBid, [vendorId, vendorId]),
-            dbPool.query(queries.l1Bids, [vendorId]), dbPool.query(queries.recentBids, [vendorId]),
+            dbPool.query(queries.assignedItems, [vendorId]), 
+            dbPool.query(queries.submittedBids, [vendorId]),
+            dbPool.query(queries.contractsWon, [vendorId]), 
+            dbPool.query(queries.needsBid, [vendorId, vendorId]),
+            dbPool.query(queries.l1Bids, [vendorId]), 
             dbPool.query(queries.avgRank, [vendorId]),
+            dbPool.query(recentBidsQuery, [vendorId]) // Executing the corrected query
         ]);
+
         const totalBids = submittedResult.count;
         const contractsWonCount = wonResult.count;
         const winRate = totalBids > 0 ? (contractsWonCount / totalBids) * 100 : 0;
-        res.json({ success: true, data: { assignedItems: assignedResult.count || 0, submittedBids: totalBids || 0, contractsWon: contractsWonCount || 0, totalWonValue: wonResult.totalValue || 0, needsBid: needsBidResult.count || 0, l1Bids: l1BidsResult.count || 0, recentBids: recentBids, avgRank: avgRankResult.avg_rank || 0, winRate: winRate } });
-    } catch (error) { next(error); }
+        
+        res.json({ 
+            success: true, 
+            data: { 
+                assignedItems: assignedResult.count || 0, 
+                submittedBids: totalBids || 0, 
+                contractsWon: contractsWonCount || 0, 
+                totalWonValue: wonResult.totalValue || 0, 
+                needsBid: needsBidResult.count || 0, 
+                l1Bids: l1BidsResult.count || 0, 
+                recentBids: recentBids, 
+                avgRank: avgRankResult.avg_rank || 0, 
+                winRate: winRate 
+            } 
+        });
+    } catch (error) { 
+        next(error); 
+    }
 });
 
 // --- 4. ADMIN FEATURES ---
