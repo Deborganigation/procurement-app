@@ -5,7 +5,7 @@ const cors = require('cors');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
-const path = require('path');
+const path = path = require('path');
 const xlsx = require('xlsx');
 const fs = require('fs');
 const sgMail = require('@sendgrid/mail');
@@ -45,7 +45,10 @@ const dbConfig = {
     connectionLimit: 10,
     queueLimit: 0,
     connectTimeout: 20000,
-    dateStrings: true
+    dateStrings: true,
+    // ===== FIX: Added Indian Standard Time (IST) timezone =====
+    // This ensures all dates from the database are handled in IST (+05:30)
+    timezone: '+05:30' 
 };
 
 if (process.env.DB_CA_CERT_CONTENT) {
@@ -104,7 +107,7 @@ app.post('/api/bids/bulk', authenticateToken, async (req, res, next) => { if (re
 app.get('/api/vendor/my-bids', authenticateToken, async (req, res, next) => { try { const query = ` SELECT bhl.*, COALESCE(ri.item_name, 'Item Deleted') as item_name, ri.requisition_id, ri.item_sl_no, (SELECT COUNT(DISTINCT b2.vendor_id) + 1 FROM bids b2 WHERE b2.item_id = bhl.item_id AND b2.bid_amount < bhl.bid_amount) AS \`rank\` FROM bidding_history_log bhl LEFT JOIN requisition_items ri ON bhl.item_id = ri.item_id WHERE bhl.vendor_id = ? ORDER BY bhl.submitted_at DESC `; const [bids] = await dbPool.query(query, [req.user.userId]); res.json({ success: true, data: bids }); } catch (error) { next(error); }});
 app.get('/api/vendor/my-awarded-contracts', authenticateToken, async (req, res, next) => { try { const [contracts] = await dbPool.query(`SELECT ac.*, ri.item_name, ri.requisition_id, ri.item_sl_no FROM awarded_contracts ac JOIN requisition_items ri ON ac.item_id = ri.item_id WHERE ac.vendor_id = ? AND ri.status = 'Awarded' ORDER BY ac.awarded_date DESC`, [req.user.userId]); res.json({ success: true, data: contracts }); } catch (error) { next(error); }});
 
-// ===== FIX: Restored and corrected the full Vendor Dashboard endpoint =====
+// --- VENDOR DASHBOARD ---
 app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next) => {
     try {
         const vendorId = req.user.userId;
@@ -131,14 +134,14 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
         res.json({
             success: true,
             data: {
-                assignedItems: assignedResult.count,
-                submittedBids: totalBids,
-                contractsWon: contractsWonCount,
+                assignedItems: assignedResult.count || 0,
+                submittedBids: totalBids || 0,
+                contractsWon: contractsWonCount || 0,
                 totalWonValue: wonResult.totalValue || 0,
-                needsBid: needsBidResult.count,
-                l1Bids: l1BidsResult.count,
+                needsBid: needsBidResult.count || 0,
+                l1Bids: l1BidsResult.count || 0,
                 recentBids: recentBids,
-                avgRank: avgRankResult.avg_rank,
+                avgRank: avgRankResult.avg_rank || 0,
                 winRate: winRate,
             }
         });
@@ -148,7 +151,7 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
 });
 
 // --- 4. ADMIN FEATURES ---
-// ===== FIX: Restored and corrected the full Admin Dashboard endpoint =====
+// ===== FIX: Hardened Admin Dashboard endpoint queries to prevent errors from NULL data =====
 app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, res, next) => {
     try {
         const queries = {
@@ -156,15 +159,25 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
             pendingUsers: "SELECT COUNT(*) as count FROM pending_users",
             awardedContracts: "SELECT COUNT(*) as count FROM awarded_contracts",
             pendingRequisitions: "SELECT COUNT(DISTINCT requisition_id) as count FROM requisitions WHERE status = 'Pending Approval'",
-            latestRequisitions: `SELECT r.requisition_id, COALESCE(r.status, 'N/A') as status, r.created_at, COALESCE(u.full_name, 'Unknown User') as creator_name, COALESCE((SELECT COUNT(*) FROM requisition_items ri WHERE ri.requisition_id = r.requisition_id), 0) as item_count FROM requisitions r LEFT JOIN users u ON r.created_by = u.user_id ORDER BY r.created_at DESC LIMIT 5`,
+            latestRequisitions: `
+                SELECT
+                    COALESCE(r.requisition_id, 'N/A') as requisition_id,
+                    COALESCE(r.status, 'N/A') as status,
+                    r.created_at,
+                    COALESCE(u.full_name, 'Unknown User') as creator_name,
+                    COALESCE((SELECT COUNT(*) FROM requisition_items ri WHERE ri.requisition_id = r.requisition_id), 0) as item_count
+                FROM requisitions r
+                LEFT JOIN users u ON r.created_by = u.user_id
+                ORDER BY r.created_at DESC
+                LIMIT 5`,
             notifications: `
                 (SELECT CONCAT(COUNT(*), ' new user(s) awaiting approval.') as text, 'admin-pending-users-view' as view FROM pending_users HAVING COUNT(*) > 0)
                 UNION
-                (SELECT CONCAT(COUNT(DISTINCT requisition_id), ' new requisition(s) to approve.') as text, 'admin-pending-reqs-view' as view FROM requisitions WHERE status = 'Pending Approval' HAVING COUNT(DISTINCT requisition_id) > 0)
-            `,
+                (SELECT CONCAT(COUNT(DISTINCT requisition_id), ' new requisition(s) to approve.') as text, 'admin-pending-reqs-view' as view FROM requisitions WHERE status = 'Pending Approval' HAVING COUNT(DISTINCT requisition_id) > 0)`,
             reqTrends: `SELECT DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as count FROM requisitions GROUP BY month ORDER BY month ASC`,
             biddingActivity: `SELECT u.full_name, COUNT(b.bid_id) as bid_count FROM bids b JOIN users u ON b.vendor_id = u.user_id WHERE u.role = 'Vendor' AND u.full_name IS NOT NULL AND u.full_name != '' GROUP BY u.user_id, u.full_name ORDER BY bid_count DESC LIMIT 5`
         };
+        
         const [
             [[activeItems]], [[pendingUsers]], [[awardedContracts]], [[pendingRequisitions]], latestRequisitions, notifications, reqTrends, biddingActivity
         ] = await Promise.all([
@@ -172,13 +185,14 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
             dbPool.query(queries.pendingRequisitions), dbPool.query(queries.latestRequisitions), dbPool.query(queries.notifications),
             dbPool.query(queries.reqTrends), dbPool.query(queries.biddingActivity)
         ]);
+        
         res.json({
             success: true,
             data: {
-                activeItems: activeItems.count,
-                pendingUsers: pendingUsers.count,
-                awardedContracts: awardedContracts.count,
-                pendingRequisitionsCount: pendingRequisitions.count,
+                activeItems: activeItems.count || 0,
+                pendingUsers: pendingUsers.count || 0,
+                awardedContracts: awardedContracts.count || 0,
+                pendingRequisitionsCount: pendingRequisitions.count || 0,
                 latestRequisitions,
                 notifications,
                 charts: {
@@ -197,6 +211,7 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
         next(error);
     }
 });
+
 
 app.get('/api/requirements/pending', authenticateToken, isAdmin, async (req, res, next) => { try { const query = `SELECT r.requisition_id, r.created_at, u.full_name as creator, (SELECT GROUP_CONCAT(u2.user_id, ':', u2.full_name SEPARATOR '||') FROM requisition_assignments ra JOIN users u2 ON ra.vendor_id = u2.user_id WHERE ra.requisition_id = r.requisition_id) as suggested_vendors FROM requisitions r LEFT JOIN users u ON r.created_by = u.user_id WHERE r.status = 'Pending Approval' GROUP BY r.requisition_id, r.created_at, u.full_name ORDER BY r.requisition_id DESC`; const [groupedReqs] = await dbPool.query(query); const [pendingItems] = await dbPool.query("SELECT * FROM requisition_items WHERE status = 'Pending Approval'"); const [allVendors] = await dbPool.query("SELECT user_id, full_name FROM users WHERE role = 'Vendor' AND is_active = 1"); res.json({ success: true, data: { groupedReqs, pendingItems, allVendors } }); } catch (error) { next(error); }});
 app.post('/api/requisitions/approve', authenticateToken, isAdmin, async (req, res, next) => { let connection; try { connection = await dbPool.getConnection(); const { approvedItemIds, vendorAssignments, requisitionId } = req.body; await connection.beginTransaction(); if (approvedItemIds && approvedItemIds.length > 0) { await connection.query("UPDATE requisition_items SET status = 'Active' WHERE item_id IN (?)", [approvedItemIds]); } await connection.query("UPDATE requisitions SET status = 'Processed', approved_at = NOW() WHERE requisition_id = ?", [requisitionId]); if (vendorAssignments) { await connection.query('DELETE FROM requisition_assignments WHERE requisition_id = ?', [requisitionId]); if(vendorAssignments.length > 0) { const values = vendorAssignments.map(vId => [requisitionId, vId, new Date()]); await connection.query('INSERT INTO requisition_assignments (requisition_id, vendor_id, assigned_at) VALUES ?', [values]); } } await connection.commit(); res.json({ success: true, message: 'Requisition items processed!' }); } catch(error) { if(connection) await connection.rollback(); next(error); } finally { if(connection) connection.release(); }});
