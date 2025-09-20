@@ -106,12 +106,13 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
             contractsWon: "SELECT COUNT(*) as count, SUM(awarded_amount) as totalValue FROM awarded_contracts WHERE vendor_id = ?",
             needsBid: "SELECT COUNT(*) as count FROM requisition_items ri JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id WHERE ra.vendor_id = ? AND ri.status = 'Active' AND ri.item_id NOT IN (SELECT item_id FROM bids WHERE vendor_id = ?)",
             l1Bids: "SELECT COUNT(*) as count FROM (SELECT item_id FROM bids WHERE vendor_id = ? AND bid_amount = (SELECT MIN(bid_amount) FROM bids b2 WHERE b2.item_id = bids.item_id) GROUP BY item_id) as l1_bids",
+            // ===== FIX: Matching query logic with Bidding History page =====
             recentBids: `
-                SELECT bhl.bid_amount, bhl.bid_status, bhl.submitted_at, ri.item_name 
-                FROM bidding_history_log bhl 
-                INNER JOIN requisition_items ri ON bhl.item_id = ri.item_id 
-                WHERE bhl.vendor_id = ? 
-                ORDER BY bhl.submitted_at DESC 
+                SELECT bhl.bid_amount, bhl.bid_status, bhl.submitted_at, COALESCE(ri.item_name, 'Item Deleted') as item_name
+                FROM bidding_history_log bhl
+                LEFT JOIN requisition_items ri ON bhl.item_id = ri.item_id
+                WHERE bhl.vendor_id = ?
+                ORDER BY bhl.submitted_at DESC
                 LIMIT 5`,
             avgRank: `SELECT AVG(t.rank) as avg_rank FROM (SELECT (SELECT COUNT(DISTINCT b2.vendor_id) + 1 FROM bids b2 WHERE b2.item_id = b.item_id AND b2.bid_amount < b.bid_amount) as \`rank\` FROM bids b WHERE b.vendor_id = ?) as t`
         };
@@ -133,22 +134,10 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
 // --- 4. ADMIN FEATURES ---
 app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, res, next) => {
     try {
-        // --- Step 1: Run simple count and chart queries together ---
-        const queries = {
-            activeItems: "SELECT COUNT(*) as count FROM requisition_items WHERE status = 'Active'",
-            awardedContracts: "SELECT COUNT(*) as count FROM awarded_contracts",
-            // ===== FIX: Added WHERE r.created_at IS NOT NULL to make the query safer =====
-            reqTrends: "SELECT DATE_FORMAT(r.created_at, '%Y-%m') as month, COUNT(*) as count FROM requisitions r WHERE r.created_at IS NOT NULL GROUP BY month ORDER BY month ASC",
-        };
+        // --- Step 1: Run simple count queries ---
+        const [[activeItems]] = await dbPool.query("SELECT COUNT(*) as count FROM requisition_items WHERE status = 'Active'");
+        const [[awardedContracts]] = await dbPool.query("SELECT COUNT(*) as count FROM awarded_contracts");
 
-        const [
-            [[activeItems]], [[awardedContracts]], reqTrends
-        ] = await Promise.all([
-            dbPool.query(queries.activeItems),
-            dbPool.query(queries.awardedContracts),
-            dbPool.query(queries.reqTrends),
-        ]);
-        
         // --- Step 2: Manually build Notifications (Quick Actions) for maximum reliability ---
         const [[pendingUsersForNotif]] = await dbPool.query("SELECT COUNT(*) as count FROM pending_users");
         const [[pendingReqsForNotif]] = await dbPool.query("SELECT COUNT(DISTINCT requisition_id) as count FROM requisitions WHERE status = 'Pending Approval'");
@@ -186,7 +175,28 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
             }));
         }
 
-        // --- Step 5: Combine all data and send the response ---
+        // ===== FIX: Requisition Trends Chart Logic moved to Node.js for maximum reliability =====
+        // --- Step 5: Fetch Requisition Trends data and process in Node.js ---
+        const [reqTrendDates] = await dbPool.query("SELECT created_at FROM requisitions WHERE created_at IS NOT NULL");
+        
+        const trendCounts = {};
+        for (const row of reqTrendDates) {
+            try {
+                const date = new Date(row.created_at);
+                if (isNaN(date.getTime())) continue; // Skip invalid dates
+                const month = date.getFullYear() + '-' + ('0' + (date.getMonth() + 1)).slice(-2);
+                trendCounts[month] = (trendCounts[month] || 0) + 1;
+            } catch (e) {
+                console.warn(`Could not parse date: ${row.created_at}`);
+            }
+        }
+        const sortedMonths = Object.keys(trendCounts).sort();
+        const reqTrendsData = {
+            labels: sortedMonths,
+            data: sortedMonths.map(month => trendCounts[month])
+        };
+
+        // --- Step 6: Combine all data and send the response ---
         res.json({
             success: true,
             data: {
@@ -197,7 +207,7 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
                 latestRequisitions,
                 notifications,
                 charts: {
-                    reqTrends: { labels: reqTrends.map(r => r.month), data: reqTrends.map(r => r.count) },
+                    reqTrends: reqTrendsData,
                     biddingActivity: { labels: biddingActivity.map(r => r.full_name), data: biddingActivity.map(r => r.bid_count) }
                 }
             }
