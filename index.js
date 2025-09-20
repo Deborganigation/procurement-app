@@ -106,7 +106,6 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
             contractsWon: "SELECT COUNT(*) as count, SUM(awarded_amount) as totalValue FROM awarded_contracts WHERE vendor_id = ?",
             needsBid: "SELECT COUNT(*) as count FROM requisition_items ri JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id WHERE ra.vendor_id = ? AND ri.status = 'Active' AND ri.item_id NOT IN (SELECT item_id FROM bids WHERE vendor_id = ?)",
             l1Bids: "SELECT COUNT(*) as count FROM (SELECT item_id FROM bids WHERE vendor_id = ? AND bid_amount = (SELECT MIN(bid_amount) FROM bids b2 WHERE b2.item_id = bids.item_id) GROUP BY item_id) as l1_bids",
-            // ===== FIX: Changed LEFT JOIN to INNER JOIN to hide bids for deleted items =====
             recentBids: `
                 SELECT bhl.bid_amount, bhl.bid_status, bhl.submitted_at, ri.item_name 
                 FROM bidding_history_log bhl 
@@ -138,7 +137,8 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
         const queries = {
             activeItems: "SELECT COUNT(*) as count FROM requisition_items WHERE status = 'Active'",
             awardedContracts: "SELECT COUNT(*) as count FROM awarded_contracts",
-            reqTrends: "SELECT DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as count FROM requisitions GROUP BY month ORDER BY month ASC",
+            // ===== FIX: Added WHERE r.created_at IS NOT NULL to make the query safer =====
+            reqTrends: "SELECT DATE_FORMAT(r.created_at, '%Y-%m') as month, COUNT(*) as count FROM requisitions r WHERE r.created_at IS NOT NULL GROUP BY month ORDER BY month ASC",
         };
 
         const [
