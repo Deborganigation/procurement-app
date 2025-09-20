@@ -106,14 +106,14 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
             contractsWon: "SELECT COUNT(*) as count, SUM(awarded_amount) as totalValue FROM awarded_contracts WHERE vendor_id = ?",
             needsBid: "SELECT COUNT(*) as count FROM requisition_items ri JOIN requisition_assignments ra ON ri.requisition_id = ra.requisition_id WHERE ra.vendor_id = ? AND ri.status = 'Active' AND ri.item_id NOT IN (SELECT item_id FROM bids WHERE vendor_id = ?)",
             l1Bids: "SELECT COUNT(*) as count FROM (SELECT item_id FROM bids WHERE vendor_id = ? AND bid_amount = (SELECT MIN(bid_amount) FROM bids b2 WHERE b2.item_id = bids.item_id) GROUP BY item_id) as l1_bids",
-            // ===== FIX: Matching query logic with Bidding History page =====
+            // ===== FINAL FIX: Shows last 10 bids for existing items only =====
             recentBids: `
-                SELECT bhl.bid_amount, bhl.bid_status, bhl.submitted_at, COALESCE(ri.item_name, 'Item Deleted') as item_name
-                FROM bidding_history_log bhl
-                LEFT JOIN requisition_items ri ON bhl.item_id = ri.item_id
-                WHERE bhl.vendor_id = ?
-                ORDER BY bhl.submitted_at DESC
-                LIMIT 5`,
+                SELECT bhl.bid_amount, bhl.bid_status, bhl.submitted_at, ri.item_name 
+                FROM bidding_history_log bhl 
+                INNER JOIN requisition_items ri ON bhl.item_id = ri.item_id 
+                WHERE bhl.vendor_id = ? 
+                ORDER BY bhl.submitted_at DESC 
+                LIMIT 10`,
             avgRank: `SELECT AVG(t.rank) as avg_rank FROM (SELECT (SELECT COUNT(DISTINCT b2.vendor_id) + 1 FROM bids b2 WHERE b2.item_id = b.item_id AND b2.bid_amount < b.bid_amount) as \`rank\` FROM bids b WHERE b.vendor_id = ?) as t`
         };
         const [
@@ -175,8 +175,7 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
             }));
         }
 
-        // ===== FIX: Requisition Trends Chart Logic moved to Node.js for maximum reliability =====
-        // --- Step 5: Fetch Requisition Trends data and process in Node.js ---
+        // --- Step 5: Fetch Requisition Trends data and process in Node.js for reliability ---
         const [reqTrendDates] = await dbPool.query("SELECT created_at FROM requisitions WHERE created_at IS NOT NULL");
         
         const trendCounts = {};
