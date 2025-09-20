@@ -128,60 +128,54 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
 // ===== NEW: Rewrote the Admin Dashboard logic to be more reliable =====
 app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, res, next) => {
     try {
+        // --- Step 1: Run simple count and chart queries together ---
         const queries = {
-            notifications: `(SELECT CONCAT(COUNT(*), ' new user(s) awaiting approval.') as text, 'admin-pending-users-view' as view FROM pending_users HAVING COUNT(*) > 0) UNION (SELECT CONCAT(COUNT(DISTINCT requisition_id), ' new requisition(s) to approve.') as text, 'admin-pending-reqs-view' as view FROM requisitions WHERE status = 'Pending Approval' HAVING COUNT(DISTINCT requisition_id) > 0)`,
-            reqTrends: `SELECT DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as count FROM requisitions GROUP BY month ORDER BY month ASC`,
+            activeItems: "SELECT COUNT(*) as count FROM requisition_items WHERE status = 'Active'",
+            awardedContracts: "SELECT COUNT(*) as count FROM awarded_contracts",
+            reqTrends: "SELECT DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as count FROM requisitions GROUP BY month ORDER BY month ASC",
             biddingActivity: `SELECT u.full_name, COUNT(b.bid_id) as bid_count FROM bids b JOIN users u ON b.vendor_id = u.user_id WHERE u.role = 'Vendor' AND u.full_name IS NOT NULL AND u.full_name != '' GROUP BY u.user_id, u.full_name ORDER BY bid_count DESC LIMIT 5`
         };
 
-        // Step 1: Run all simple/reliable queries together
         const [
-            [[activeItems]], [[pendingUsers]], [[awardedContracts]], [[pendingRequisitions]],
-            notifications, reqTrends, biddingActivity
+            [[activeItems]], [[awardedContracts]], reqTrends, biddingActivity
         ] = await Promise.all([
-            dbPool.query("SELECT COUNT(*) as count FROM requisition_items WHERE status = 'Active'"),
-            dbPool.query("SELECT COUNT(*) as count FROM pending_users"),
-            dbPool.query("SELECT COUNT(*) as count FROM awarded_contracts"),
-            dbPool.query("SELECT COUNT(DISTINCT requisition_id) as count FROM requisitions WHERE status = 'Pending Approval'"),
-            dbPool.query(queries.notifications),
+            dbPool.query(queries.activeItems),
+            dbPool.query(queries.awardedContracts),
             dbPool.query(queries.reqTrends),
             dbPool.query(queries.biddingActivity)
         ]);
-
-        // Step 2: Fetch latest requisitions separately (this was the problematic query)
-        const [latestRequisitionsRaw] = await dbPool.query(`
-            SELECT r.requisition_id, r.status, r.created_at, COALESCE(u.full_name, 'Unknown User') as creator_name
-            FROM requisitions r
-            LEFT JOIN users u ON r.created_by = u.user_id
-            ORDER BY r.created_at DESC
-            LIMIT 5
-        `);
         
-        // Step 3: If requisitions are found, fetch their item counts efficiently
+        // --- Step 2: Manually build Notifications (Quick Actions) for maximum reliability ---
+        const [[pendingUsersForNotif]] = await dbPool.query("SELECT COUNT(*) as count FROM pending_users");
+        const [[pendingReqsForNotif]] = await dbPool.query("SELECT COUNT(DISTINCT requisition_id) as count FROM requisitions WHERE status = 'Pending Approval'");
+        
+        const notifications = [];
+        if (pendingUsersForNotif.count > 0) {
+            notifications.push({ text: `${pendingUsersForNotif.count} new user(s) awaiting approval.`, view: 'admin-pending-users-view' });
+        }
+        if (pendingReqsForNotif.count > 0) {
+            notifications.push({ text: `${pendingReqsForNotif.count} new requisition(s) to approve.`, view: 'admin-pending-reqs-view' });
+        }
+
+        // --- Step 3: Fetch latest requisitions using the reliable 2-step method ---
+        const [latestRequisitionsRaw] = await dbPool.query(`SELECT r.requisition_id, r.status, r.created_at, COALESCE(u.full_name, 'Unknown User') as creator_name FROM requisitions r LEFT JOIN users u ON r.created_by = u.user_id ORDER BY r.created_at DESC LIMIT 5`);
+        
         let latestRequisitions = [];
         if (latestRequisitionsRaw.length > 0) {
             const reqIds = latestRequisitionsRaw.map(r => r.requisition_id);
-            const [itemCounts] = await dbPool.query(`
-                SELECT requisition_id, COUNT(*) as item_count
-                FROM requisition_items
-                WHERE requisition_id IN (?)
-                GROUP BY requisition_id
-            `, [reqIds]);
+            const [itemCounts] = await dbPool.query(`SELECT requisition_id, COUNT(*) as item_count FROM requisition_items WHERE requisition_id IN (?) GROUP BY requisition_id`, [reqIds]);
             const countsMap = new Map(itemCounts.map(item => [item.requisition_id, item.item_count]));
-            latestRequisitions = latestRequisitionsRaw.map(req => ({
-                ...req,
-                item_count: countsMap.get(req.requisition_id) || 0
-            }));
+            latestRequisitions = latestRequisitionsRaw.map(req => ({ ...req, item_count: countsMap.get(req.requisition_id) || 0 }));
         }
 
-        // Step 4: Combine all data and send the response
+        // --- Step 4: Combine all data and send the response ---
         res.json({
             success: true,
             data: {
                 activeItems: activeItems.count || 0,
-                pendingUsers: pendingUsers.count || 0,
+                pendingUsers: pendingUsersForNotif.count || 0,
                 awardedContracts: awardedContracts.count || 0,
-                pendingRequisitionsCount: pendingRequisitions.count || 0,
+                pendingRequisitionsCount: pendingReqsForNotif.count || 0,
                 latestRequisitions,
                 notifications,
                 charts: {
@@ -190,13 +184,14 @@ app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, re
                 }
             }
         });
-
     } catch (error) {
         console.error("====== ERROR IN [Admin Dashboard] ENDPOINT ======", error);
         next(error);
     }
 });
 
+
+// (The rest of the file remains the same)
 app.get('/api/requirements/pending', authenticateToken, isAdmin, async (req, res, next) => { try { const query = `SELECT r.requisition_id, r.created_at, u.full_name as creator, (SELECT GROUP_CONCAT(u2.user_id, ':', u2.full_name SEPARATOR '||') FROM requisition_assignments ra JOIN users u2 ON ra.vendor_id = u2.user_id WHERE ra.requisition_id = r.requisition_id) as suggested_vendors FROM requisitions r LEFT JOIN users u ON r.created_by = u.user_id WHERE r.status = 'Pending Approval' GROUP BY r.requisition_id, r.created_at, u.full_name ORDER BY r.requisition_id DESC`; const [groupedReqs] = await dbPool.query(query); const [pendingItems] = await dbPool.query("SELECT * FROM requisition_items WHERE status = 'Pending Approval'"); const [allVendors] = await dbPool.query("SELECT user_id, full_name FROM users WHERE role = 'Vendor' AND is_active = 1"); res.json({ success: true, data: { groupedReqs, pendingItems, allVendors } }); } catch (error) { next(error); }});
 app.post('/api/requisitions/approve', authenticateToken, isAdmin, async (req, res, next) => { let connection; try { connection = await dbPool.getConnection(); const { approvedItemIds, vendorAssignments, requisitionId } = req.body; await connection.beginTransaction(); if (approvedItemIds && approvedItemIds.length > 0) { await connection.query("UPDATE requisition_items SET status = 'Active' WHERE item_id IN (?)", [approvedItemIds]); } await connection.query("UPDATE requisitions SET status = 'Processed', approved_at = NOW() WHERE requisition_id = ?", [requisitionId]); if (vendorAssignments) { await connection.query('DELETE FROM requisition_assignments WHERE requisition_id = ?', [requisitionId]); if(vendorAssignments.length > 0) { const values = vendorAssignments.map(vId => [requisitionId, vId, new Date()]); await connection.query('INSERT INTO requisition_assignments (requisition_id, vendor_id, assigned_at) VALUES ?', [values]); } } await connection.commit(); res.json({ success: true, message: 'Requisition items processed!' }); } catch(error) { if(connection) await connection.rollback(); next(error); } finally { if(connection) connection.release(); }});
 app.get('/api/requirements/active', authenticateToken, isAdmin, async (req, res, next) => { try { const query = `SELECT ri.*, (SELECT MIN(b.bid_amount) FROM bids b WHERE b.item_id = ri.item_id) as l1_rate, (SELECT u.full_name FROM bids b JOIN users u ON b.vendor_id = u.user_id WHERE b.item_id = ri.item_id ORDER BY b.bid_amount ASC LIMIT 1) as l1_vendor, (SELECT GROUP_CONCAT(u_assign.full_name SEPARATOR ', ') FROM requisition_assignments ra JOIN users u_assign ON ra.vendor_id = u_assign.user_id WHERE ra.requisition_id = ri.requisition_id) as assigned_vendors FROM requisition_items ri WHERE ri.status IN ('Active', 'Bidding Closed') ORDER BY ri.requisition_id DESC, ri.item_sl_no ASC`; const [items] = await dbPool.query(query); res.json({ success: true, data: items }); } catch (error) { next(error); }});
