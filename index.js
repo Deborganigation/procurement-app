@@ -5,7 +5,8 @@ const cors = require('cors');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
-const path = path = require('path');
+// ===== FIX: Corrected variable initialization error =====
+const path = require('path');
 const xlsx = require('xlsx');
 const fs = require('fs');
 const sgMail = require('@sendgrid/mail');
@@ -48,7 +49,7 @@ const dbConfig = {
     dateStrings: true,
     // ===== FIX: Added Indian Standard Time (IST) timezone =====
     // This ensures all dates from the database are handled in IST (+05:30)
-    timezone: '+05:30' 
+    timezone: '+05:30'
 };
 
 if (process.env.DB_CA_CERT_CONTENT) {
@@ -151,7 +152,6 @@ app.get('/api/vendor/dashboard-stats', authenticateToken, async (req, res, next)
 });
 
 // --- 4. ADMIN FEATURES ---
-// ===== FIX: Hardened Admin Dashboard endpoint queries to prevent errors from NULL data =====
 app.get('/api/admin/dashboard-stats', authenticateToken, isAdmin, async (req, res, next) => {
     try {
         const queries = {
