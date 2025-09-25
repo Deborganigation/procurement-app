@@ -375,7 +375,20 @@
         // =========================================================
         $(document).ready(() => {
             loginWrapper = $('#login-wrapper'); appContainer = $('#app-container'); mainView = $('#main-view'); headerTitle = $('#header-title');
-            try { registerModal = new bootstrap.Modal('#registerModal'); adminActionModal = new bootstrap.Modal('#adminActionModal'); editUserModal = new bootstrap.Modal('#editUserModal'); reopenBiddingModal = new bootstrap.Modal('#reopenBiddingModal'); bulkUploadModal = new bootstrap.Modal('#bulkUploadModal'); advancedBulkAwardModal = new bootstrap.Modal('#advancedBulkAwardModal'); addUserModal = new bootstrap.Modal('#addUserModal'); forcePasswordResetModal = new bootstrap.Modal('#forcePasswordResetModal'); assignVendorsModal = new bootstrap.Modal('#assignVendorsModal'); bulkBidErrorModal = new bootstrap.Modal('#bulkBidErrorModal'); } catch (e) { console.error("Error initializing modals:", e); }
+            try { 
+                registerModal = new bootstrap.Modal('#registerModal'); 
+                adminActionModal = new bootstrap.Modal('#adminActionModal'); 
+                editUserModal = new bootstrap.Modal('#editUserModal'); 
+                reopenBiddingModal = new bootstrap.Modal('#reopenBiddingModal'); 
+                bulkUploadModal = new bootstrap.Modal('#bulkUploadModal'); 
+                advancedBulkAwardModal = new bootstrap.Modal('#advancedBulkAwardModal'); 
+                addUserModal = new bootstrap.Modal('#addUserModal'); 
+                forcePasswordResetModal = new bootstrap.Modal('#forcePasswordResetModal'); 
+                assignVendorsModal = new bootstrap.Modal('#assignVendorsModal'); 
+                bulkBidErrorModal = new bootstrap.Modal('#bulkBidErrorModal'); 
+            } catch (e) { 
+                console.error("Error initializing modals:", e); 
+            }
             const user = sessionStorage.getItem('loggedInUser');
             if (user && sessionStorage.getItem('authToken')) { setupUIForRole(JSON.parse(user)); } else { loginWrapper.removeClass('hidden'); appContainer.addClass('hidden'); }
             
@@ -507,8 +520,6 @@
                 const l1PriceHtml = item.l1_bid_amount ? `<div class="fw-bold text-success">${formatCurrency(item.l1_bid_amount)}</div><span class="badge bg-success">L1</span>` : `<small class="text-muted">No Bid</small>`;
                 const l2PriceHtml = item.l2_bid_amount ? `<div class="fw-bold text-info">${formatCurrency(item.l2_bid_amount)}</div><span class="badge bg-info">L2</span>` : `<small class="text-muted">No Bid</small>`;
                 const l3PriceHtml = item.l3_bid_amount ? `<div class="fw-bold text-warning">${formatCurrency(item.l3_bid_amount)}</div><span class="badge bg-warning">L3</span>` : `<small class="text-muted">No Bid</small>`;
-
-                const myRankHtml = item.my_rank ? `<span class="badge bg-primary fs-6">L${item.my_rank}</span>` : `<small class="text-muted">Not Yet Bid</small>`;
 
                 const bidInputHtml = maxAttemptsReached ? `<div class="text-danger small"><i class="fas fa-exclamation-circle me-1"></i> Max bids reached.</div>` : 
                     `<input type="number" step="0.01" class="form-control form-control-sm ex-works-rate" placeholder="Rate/Unit" data-item-id="${item.item_id}">`;
