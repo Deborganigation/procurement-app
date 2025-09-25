@@ -84,7 +84,7 @@
         .bidding-card-body { padding: 1.5rem; }
         .bid-input-area { background-color: #f6f9fc; border-radius: .5rem; padding: 1.25rem; border: 1px dashed var(--border-color); }
         .bid-input-group { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; align-items: end; }
-        .bidding-card .not-applicable { background-color: #e9ecef; color: #6c757d; }
+        .bidding-card .not-applicable, .table .not-applicable { background-color: #e9ecef; color: #6c757d; }
         .chart-container { position: relative; height: 300px; width: 100%; }
         .chart-no-data { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: var(--text-muted); font-style: italic; }
         
@@ -274,10 +274,25 @@
                     </div>
                 </div>`,
             'vendor-requirements-view': `<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-                                            <h5 class="mb-0">My Open Requirements for Bidding</h5>
-                                            <button class="btn btn-success" onclick="handleBulkBidSubmit()"><i class="fas fa-check-double me-2"></i>Submit All Entered Bids</button>
+                                             <h5 class="mb-0">My Open Requirements for Bidding</h5>
+                                             <button class="btn btn-success" onclick="handleBulkBidSubmit()"><i class="fas fa-check-double me-2"></i>Submit All Entered Bids</button>
                                          </div>
-                                         <div id="vendor-reqs-container"></div>
+                                         <div class="card">
+                                            <div class="card-body table-responsive p-0">
+                                                <table class="table table-hover align-middle" id="vendor-reqs-table">
+                                                    <thead class="table-light">
+                                                        <tr>
+                                                            <th style="min-width: 250px;">Item Details</th>
+                                                            <th>Info</th>
+                                                            <th>My Rank</th>
+                                                            <th>Bidding History</th>
+                                                            <th style="min-width: 450px;">Place Your Bid</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody id="vendor-reqs-tbody"></tbody>
+                                                </table>
+                                            </div>
+                                         </div>
                                          <div id="vendor-reqs-empty-state"></div>`,
             'vendor-my-bids-view': `<div class="card"><div class="card-header d-flex justify-content-between align-items-center"><h5 class="mb-0">My Bidding History</h5><button class="btn btn-sm btn-success" onclick="downloadMyBidsReport()"><i class="fas fa-download me-2"></i>Download Report</button></div><div class="card-body table-responsive p-0"><table class="table table-hover align-middle" id="vendor-bids-table"><thead class="table-light"><tr><th rowspan="2">Req. ID</th><th rowspan="2">Item Name</th><th colspan="3" class="text-center-deep">My Bid (₹)</th><th rowspan="2">My Rank</th><th rowspan="2">Status</th><th colspan="3" class="text-center-deep">L1 Bid (₹)</th><th rowspan="2">Date</th></tr><tr><th>Unit Price</th><th>Freight</th><th>Total</th><th>Unit Price</th><th>Freight</th><th>Total</th></tr></thead><tbody id="vendor-bids-tbody"></tbody></table><div id="vendor-bids-empty-state"></div></div></div>`,
             'vendor-awarded-view': `<div class="card"><div class="card-header d-flex justify-content-between align-items-center"><h5 class="mb-0">My Awarded Contracts</h5><button class="btn btn-sm btn-success" onclick="downloadMyAwardedContractsReport()"><i class="fas fa-download me-2"></i>Download Report</button></div><div class="card-body table-responsive p-0"><table class="table table-hover align-middle" id="vendor-awarded-table"><thead class="table-light"><tr><th>Req. ID</th><th>Item</th><th>Unit Price (₹)</th><th>Freight (₹)</th><th>Total Amount (₹)</th><th>Date</th></tr></thead><tbody id="vendor-awarded-tbody"></tbody></table><div id="vendor-awarded-empty-state"></div></div></div>`,
@@ -436,27 +451,83 @@
         
         async function load_vendor_requirements_view() {
             const result = await apiCall('/requirements/assigned');
-            const container = $('#vendor-reqs-container').empty();
+            const tableBody = $('#vendor-reqs-tbody').empty(); // Target the new tbody
+            
             if (!result.success) return;
+
             if (result.data.length === 0) {
+                $('#vendor-reqs-table').hide(); // Hide the table if no data
                 renderEmptyState('#vendor-reqs-empty-state', 'No open requirements assigned for bidding.', 'fa-clipboard-list');
                 return;
             }
+
+            $('#vendor-reqs-table').show(); // Ensure table is visible
             $('#vendor-reqs-empty-state').empty();
+
             result.data.forEach(item => {
-                let historyHtml = '<li class="list-group-item small text-muted">No bids submitted yet.</li>';
+                // 1. Bidding History Popover Content
+                let historyHtml = '<small class="text-muted">No bids submitted yet.</small>';
                 if (item.my_bid_history && item.my_bid_history.length > 0) {
-                    historyHtml = item.my_bid_history.map((bid, index) => `
-                        <li class="list-group-item small d-flex justify-content-between align-items-center">
-                            <span><strong>Bid ${index + 1}:</strong> Total: <strong>${formatCurrency(bid.bid_amount)}</strong></span>
-                            <span class="badge bg-info">Rank: ${bid.rank ? `L${bid.rank}` : 'N/A'}</span>
-                        </li>`).join('');
+                    historyHtml = '<ul class="list-unstyled mb-0">' + item.my_bid_history.map((bid, index) => `
+                        <li class="mb-1">
+                            <small><strong>Bid ${index + 1}:</strong> ${formatCurrency(bid.bid_amount)}
+                            <span class="badge bg-info ms-1">Rank: ${bid.rank ? `L${bid.rank}` : 'N/A'}</span></small>
+                        </li>`).join('') + '</ul>';
                 }
+
+                const historyPopoverButton = (item.my_bid_history && item.my_bid_history.length > 0)
+                    ? `<button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="popover" data-bs-html="true" title="My Bidding History" data-bs-content="${historyHtml.replace(/"/g, '&quot;')}">
+                         View (${item.my_bid_history.length})
+                       </button>`
+                    : `<span class="text-muted small">No Bids</span>`;
+
+                // 2. Bid Input Area HTML
                 const attempts = item.bid_attempts || 0;
-                const bidInputHtml = (attempts >= 3) ? `<div class="text-center text-danger small p-3 bg-light rounded"><i class="fas fa-exclamation-circle me-1"></i> You have reached the maximum of 3 bids for this item.</div>` : `<div class="bid-input-area mt-3" data-bid-row-for="${item.item_id}"><div class="bid-input-group"><div><label class="form-label small mb-1 fw-bold">Your Next Bid (Attempt ${attempts + 1} of 3)</label><input type="number" step="0.01" class="form-control form-control-sm ex-works-rate" placeholder="Ex-works Rate/Unit"></div><div><label class="form-label small mb-1">Freight Rate/Unit</label><input type="number" step="0.01" class="form-control form-control-sm freight-rate ${!item.freight_required ? 'not-applicable' : ''}" placeholder="Freight Rate/Unit" ${!item.freight_required ? 'readonly value="0"' : 'value=""'}></div><div><label class="form-label small mb-1">Comments</label><input type="text" class="form-control form-control-sm comments" placeholder="Optional comments..."></div></div></div>`;
-                const itemCardHtml = `<div class="bidding-card" data-item='${JSON.stringify(item)}'><div class="bidding-card-header d-flex justify-content-between align-items-center"><h6 class="mb-0">${item.item_name || 'N/A'}</h6><small class="text-muted">REQ-${item.requisition_id}-${item.item_sl_no}</small></div><div class="bidding-card-body"><div class="row"><div class="col-md-8"><p class="mb-2"><strong>Location:</strong> ${item.delivery_location || 'N/A'}</p><p class="mb-2"><strong>Quantity:</strong> ${item.quantity || 'N/A'} ${item.unit || 'N/A'}</p><p class="mb-2"><strong>Links:</strong> ${createImageLinks(item) || 'None'}</p><p class="mb-0"><strong>My Current Rank:</strong> ${item.my_rank ? `<span class="badge bg-primary fs-6">L${item.my_rank}</span>` : '<span class="text-muted">Not Yet Bid</span>'}</p></div><div class="col-md-4"><div class="accordion" id="accordionHistory-${item.item_id}"><div class="accordion-item"><h2 class="accordion-header"><button class="accordion-button small" type="button" data-bs-toggle="collapse" data-bs-target="#collapseHistory-${item.item_id}">My Bidding History</button></h2><div id="collapseHistory-${item.item_id}" class="accordion-collapse collapse show" data-bs-parent="#accordionHistory-${item.item_id}"><ul class="list-group list-group-flush">${historyHtml}</ul></div></div></div></div></div>${bidInputHtml}</div></div>`;
-                container.append(itemCardHtml);
+                const bidInputHtml = (attempts >= 3) 
+                    ? `<div class="text-center text-danger small p-2 bg-light rounded"><i class="fas fa-exclamation-circle me-1"></i> You have reached the maximum of 3 bids for this item.</div>` 
+                    : `<div class="d-flex gap-2 align-items-end bid-input-area" data-bid-row-for="${item.item_id}">
+                           <div>
+                               <label class="form-label small mb-1 fw-bold">Unit Price (Attempt ${attempts + 1})</label>
+                               <input type="number" step="0.01" class="form-control form-control-sm ex-works-rate" placeholder="Ex-works Rate/Unit">
+                           </div>
+                           <div>
+                               <label class="form-label small mb-1">Freight/Unit</label>
+                               <input type="number" step="0.01" class="form-control form-control-sm freight-rate ${!item.freight_required ? 'not-applicable' : ''}" placeholder="Freight Rate/Unit" ${!item.freight_required ? 'readonly value="0"' : 'value=""'}>
+                           </div>
+                           <div>
+                               <label class="form-label small mb-1">Comments</label>
+                               <input type="text" class="form-control form-control-sm comments" placeholder="Optional comments...">
+                           </div>
+                       </div>`;
+                
+                // 3. Assemble the full table row
+                const tableRowHtml = `
+                    <tr data-item='${JSON.stringify(item)}'>
+                        <td>
+                            <strong>${item.item_name || 'N/A'}</strong><br>
+                            <small class="text-muted">REQ-${item.requisition_id}-${item.item_sl_no}</small><br>
+                            <small>${createImageLinks(item) || ''}</small>
+                        </td>
+                        <td>
+                            <small><strong>Qty:</strong> ${item.quantity || 'N/A'} ${item.unit || 'N/A'}</small><br>
+                            <small><strong>Location:</strong> ${item.delivery_location || 'N/A'}</small>
+                        </td>
+                        <td>
+                            ${item.my_rank ? `<span class="badge bg-primary fs-6">L${item.my_rank}</span>` : '<span class="text-muted small">Not Yet Bid</span>'}
+                        </td>
+                        <td>
+                            ${historyPopoverButton}
+                        </td>
+                        <td>
+                            ${bidInputHtml}
+                        </td>
+                    </tr>
+                `;
+                tableBody.append(tableRowHtml);
             });
+
+            // IMPORTANT: Initialize popovers after they are added to the DOM
+            $('[data-bs-toggle="popover"]').popover({ trigger: 'hover focus' });
         }
         async function load_vendor_my_bids_view() { const result = await apiCall('/vendor/my-bids'); if (!result.success) return; if (result.data.length === 0) { $('#vendor-bids-table').hide(); renderEmptyState('#vendor-bids-empty-state', 'You have not submitted any bids yet.', 'fa-gavel'); return; } $('#vendor-bids-table').show(); $('#vendor-bids-empty-state').empty(); $('#vendor-bids-tbody').html(result.data.map(bid => { const l1ExWorks = bid.l1_ex_works_rate != null ? formatCurrency(bid.l1_ex_works_rate) : `<small class="text-muted">Not Awarded</small>`; const l1Freight = bid.l1_freight_rate != null ? formatCurrency(bid.l1_freight_rate) : `<small class="text-muted">Not Awarded</small>`; const l1Total = bid.l1_bid_amount != null ? `<strong>${formatCurrency(bid.l1_bid_amount)}</strong>` : `<small class="text-muted">Not Awarded</small>`; return `<tr><td>REQ-${bid.requisition_id || 'N/A'}-${bid.item_sl_no || 'N/A'}</td><td>${bid.item_name || 'N/A'}</td><td>${formatCurrency(bid.ex_works_rate)}</td><td>${formatCurrency(bid.freight_rate)}</td><td><strong>${formatCurrency(bid.bid_amount)}</strong></td><td>${bid.rank ? `<span class="badge bg-info">L${bid.rank}</span>` : 'N/A'}</td><td><span class="badge bg-${getBadgeColor(bid.bid_status)}">${bid.bid_status || 'N/A'}</span></td><td>${l1ExWorks}</td><td>${l1Freight}</td><td>${l1Total}</td><td>${formatDate(bid.submitted_at, true)}</td></tr>`; }).join('')); }
         async function load_vendor_awarded_view() { const result = await apiCall('/vendor/my-awarded-contracts'); if (!result.success) return; if (result.data.length === 0) { $('#vendor-awarded-table').hide(); renderEmptyState('#vendor-awarded-empty-state', 'You have not been awarded any contracts yet.', 'fa-trophy'); return; } $('#vendor-awarded-table').show(); $('#vendor-awarded-empty-state').empty(); $('#vendor-awarded-tbody').html(result.data.map(c => `<tr><td>REQ-${c.requisition_id || 'N/A'}-${c.item_sl_no || 'N/A'}</td><td>${c.item_name || 'N/A'}</td><td>${formatCurrency(c.ex_works_rate)}</td><td>${formatCurrency(c.freight_rate)}</td><td><strong>${formatCurrency(c.awarded_amount)}</strong></td><td>${formatDate(c.awarded_date)}</td></tr>`).join('')); }
@@ -466,7 +537,7 @@
         
         // --- ALL EVENT HANDLERS & ACTION FUNCTIONS (NOW COMPLETE) ---
         function handleUserSort(columnName) { if (userSortState.column === columnName) { userSortState.order = userSortState.order === 'asc' ? 'desc' : 'asc'; } else { userSortState.column = columnName; userSortState.order = 'asc'; } load_admin_user_control_view(); }
-        async function handleBulkBidSubmit() { const bidsToSubmit = []; $('#vendor-reqs-container .bidding-card').each(function() { const card = $(this); const item = JSON.parse(card.attr('data-item')); const bidInputArea = card.find('.bid-input-area'); if (bidInputArea.length === 0 || (item.bid_attempts || 0) >= 3) return; const newExWorks = bidInputArea.find('.ex-works-rate').val(); if (newExWorks) { bidsToSubmit.push({ itemId: item.item_id, ex_works_rate: parseFloat(newExWorks), freight_rate: parseFloat(bidInputArea.find('.freight-rate').val()) || 0, comments: bidInputArea.find('.comments').val() || '' }); } }); if (bidsToSubmit.length === 0) { return showToast('No new bids were entered.', 'warning'); } const result = await apiCall('/bids/bulk', 'POST', { bids: bidsToSubmit }); if (result.success) { showToast(result.message, 'success'); if (result.message.includes('skipped')) { $('#bulk-bid-error-list').html(`<li>${result.message}</li>`); bulkBidErrorModal.show(); } load_vendor_requirements_view(); } }
+        async function handleBulkBidSubmit() { const bidsToSubmit = []; $('#vendor-reqs-tbody tr').each(function() { const row = $(this); const item = JSON.parse(row.attr('data-item')); const bidInputArea = row.find('.bid-input-area'); if (bidInputArea.length === 0 || (item.bid_attempts || 0) >= 3) return; const newExWorks = bidInputArea.find('.ex-works-rate').val(); if (newExWorks) { bidsToSubmit.push({ itemId: item.item_id, ex_works_rate: parseFloat(newExWorks), freight_rate: parseFloat(bidInputArea.find('.freight-rate').val()) || 0, comments: bidInputArea.find('.comments').val() || '' }); } }); if (bidsToSubmit.length === 0) { return showToast('No new bids were entered.', 'warning'); } const result = await apiCall('/bids/bulk', 'POST', { bids: bidsToSubmit }); if (result.success) { showToast(result.message, 'success'); if (result.message.includes('skipped')) { $('#bulk-bid-error-list').html(`<li>${result.message}</li>`); bulkBidErrorModal.show(); } load_vendor_requirements_view(); } }
         async function approveUser(tempId) { if (!confirm('Approve this user?')) return; const result = await apiCall('/users/approve', 'POST', { temp_id: tempId }); if (result.success) { showToast('User Approved!', 'success'); load_admin_pending_users_view(); fetchSidebarCounts(); } }
         async function handleBulkApproval(reqId) { const container = $(`#collapse-${reqId}`); const approvedItemIds = container.find('.item-check-box:checked').map((i, el) => $(el).val()).get(); const vendorAssignments = container.find('.vendor-assign-check:checked').map((i, el) => $(el).val()).get(); if(approvedItemIds.length === 0) { if(!confirm("No items selected. This will mark the requisition as processed without activating any items. Continue?")) return; } const result = await apiCall('/requisitions/approve', 'POST', { approvedItemIds, vendorAssignments, requisitionId: reqId }); if(result.success) { showToast(result.message, 'success'); load_admin_pending_reqs_view(); fetchSidebarCounts(); } }
         async function openAdminActionModal(itemId, itemName) { $('#adminActionModalTitle').text(`Bids for: ${itemName}`); $('#bids-tbody').html(`<tr><td colspan="7" class="text-center">Loading...</td></tr>`); adminActionModal.show(); const result = await apiCall(`/items/${itemId}/bids`); if(result.success) { const itemDetails = result.data.itemDetails; $('#bids-tbody').html(result.data.bids.map((bid, i) => { const bidDataForAward = { ...bid, ...itemDetails}; return ` <tr data-bid='${JSON.stringify(bidDataForAward)}'> <td><input class="form-check-input bid-checkbox" type="checkbox" ${bid.bid_status !== 'Submitted' ? 'disabled' : ''}></td> <td><span class="badge bg-info">L${i+1}</span></td> <td>${bid.vendor_name}</td> <td>${formatCurrency(bid.ex_works_rate)}</td> <td>${formatCurrency(bid.freight_rate)}</td> <td><strong>${formatCurrency(bid.bid_amount)}</strong></td> <td><span class="badge bg-${getBadgeColor(bid.bid_status)}">${bid.bid_status}</span></td> </tr>`; }).join('') || `<tr><td colspan="7" class="text-center">No bids submitted.</td></tr>`); $('#reopen-bidding-btn').off('click').on('click', () => { handleSingleReopenBidding(itemId); adminActionModal.hide(); }); } }
